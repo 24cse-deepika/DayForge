@@ -13,7 +13,8 @@ function overlaps(slotA, slotB) {
 }
 
 function isValidDate(date) {
-    return date instanceof Date && !isNaN(date);
+    const d = date instanceof Date ? date : new Date(date);
+    return d instanceof Date && !isNaN(d);
 }
 
 function hoursUntilDeadline(deadline) {
@@ -36,6 +37,15 @@ function isWithinSlot(date, slot) {
     return date >= slot.start && date <= slot.end;
 }
 
+function percentageTimeRemaining(earliestStart, deadline) {
+    const now = new Date();
+    if (now >= deadline) return 0;
+    if (now <= earliestStart) return 100;
+    const totalTime = deadline - earliestStart;
+    const timeRemaining = deadline - now;
+    return Math.round((timeRemaining / totalTime) * 100);
+}
+
 module.exports = {
     isInPast,
     minutesBetween,
@@ -44,6 +54,7 @@ module.exports = {
     minutesToMilliseconds,
     hoursUntilDeadline,
     addMinutes,
-    isWithinSlot
+    isWithinSlot,
+    percentageTimeRemaining
 };
     
