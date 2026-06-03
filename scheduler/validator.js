@@ -1,5 +1,6 @@
-const { ERROR_CODES } = require('../utils/constants');
+const { ERROR_CODES, RECURRENCE, BLOCK_TYPES } = require('../utils/constants');
 const { isInPast, isValidDate } = require('../utils/timeUtils');
+
 
 function validateTask(input) {
     if (!input.name || typeof input.name !== 'string' || input.name.trim() === '') {
@@ -32,6 +33,32 @@ function validateTask(input) {
     return { success: true };
 }
 
+function validateBlockedInterval(input) {
+    if (!input.label || typeof input.label !== 'string' || input.label.trim() === '') {
+        return { success: false, error: { code: ERROR_CODES.INVALID_INPUT, message: "Label is required and must be a non-empty string." } };
+    }
+    if (!input.start || !isValidDate(new Date(input.start))) {
+        return { success: false, error: { code: ERROR_CODES.INVALID_INPUT, message: "Start time is required and must be a valid date." } };
+    }
+    if (!input.end || !isValidDate(new Date(input.end))) {
+        return { success: false, error: { code: ERROR_CODES.INVALID_INPUT, message: "End time is required and must be a valid date." } };
+    }
+    if (new Date(input.start) >= new Date(input.end)) {
+        return { success: false, error: { code: ERROR_CODES.INVALID_INPUT, message: "Start time must be before end time." } };
+    }
+    if (input.recurrence && !Object.values(RECURRENCE).includes(input.recurrence)) {
+        return { success: false, error: { code: ERROR_CODES.INVALID_INPUT, message: "Recurrence must be one of: none, daily, weekdays, weekends, custom." } };
+    }
+    if (input.recurrence === RECURRENCE.CUSTOM && (!input.customDays || !Array.isArray(input.customDays) || input.customDays.length === 0)) {
+        return { success: false, error: { code: ERROR_CODES.INVALID_INPUT, message: "For custom recurrence, customDays must be a non-empty array of day names." } };
+    }
+    if (input.type && !Object.values(BLOCK_TYPES).includes(input.type)) {
+        return { success: false, error: { code: ERROR_CODES.INVALID_INPUT, message: "Type must be either 'blocked' or 'break'." } };
+    }
+    return { success: true };
+}
+
 module.exports = {
-    validateTask
+    validateTask,
+    validateBlockedInterval
 };
