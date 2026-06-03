@@ -1,0 +1,49 @@
+function isInPast(date) {
+    const now = new Date();
+    return date < now;
+}
+
+function minutesBetween(start, end){
+    const diff = end - start; // difference in milliseconds
+    return Math.round(diff / 60000); // convert to minutes
+}
+
+function overlaps(slotA, slotB) {
+    return slotA.start < slotB.end && slotA.end > slotB.start;  
+}
+
+function isValidDate(date) {
+    return date instanceof Date && !isNaN(date);
+}
+
+function hoursUntilDeadline(deadline) {
+    const now = new Date();
+    const diff = deadline - now;
+    return diff / (1000 * 60 * 60); // convert to hours
+}
+
+function minutesToMilliseconds(minutes) {
+    return minutes * 60 * 1000;
+}
+
+// adds minutes to a date, returns new Date
+function addMinutes(date, minutes) {
+    return new Date(date.getTime() + minutesToMilliseconds(minutes));
+}
+
+// checks if a date falls within a slot
+function isWithinSlot(date, slot) {
+    return date >= slot.start && date <= slot.end;
+}
+
+module.exports = {
+    isInPast,
+    minutesBetween,
+    overlaps,
+    isValidDate,
+    minutesToMilliseconds,
+    hoursUntilDeadline,
+    addMinutes,
+    isWithinSlot
+};
+    
