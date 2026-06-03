@@ -50,6 +50,19 @@ const SCHEDULE_REASONS = {
     TASK_SPLIT: "task_split"
 }
 
+const RECURRENCE = {
+    NONE : "none",
+    DAILY : "daily",
+    WEEKDAYS : "weekdays",
+    WEEKENDS : "weekends",
+    CUSTOM : "custom"
+}
+
+const BLOCK_TYPES = {
+    BLOCKED : "blocked",
+    BREAK: "break"
+}
+
 module.exports = {
     TASK_STATUSES,
     URGENCY,
@@ -60,5 +73,7 @@ module.exports = {
     POMODORO,
     METRICS,
     ERROR_CODES,
-    SCHEDULE_REASONS
+    SCHEDULE_REASONS,
+    RECURRENCE,
+    BLOCK_TYPES
 };
