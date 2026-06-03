@@ -57,7 +57,7 @@ function resolveDependencies(tasks) {
         return { success: false, error: { code: ERROR_CODES.CYCLIC_DEPENDENCY, message: "Cyclic dependency detected among tasks." } };
     }
 
-    return { success: true, sortedTasks: res.map(id => tasks.find(t => t.id === id)), readyQueue: ready_queue, adj, indegree };
+    return { success: true, sortedTasks: res.map(id => tasks.find(t => t.id === id)), readyQueue: ready_queue, adj};
 }
 
 module.exports = {
