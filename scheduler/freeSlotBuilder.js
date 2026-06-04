@@ -1,4 +1,4 @@
-const { SCHEDULING_WINDOW_DAYS, RECURRENCE, BLOCK_TYPES, POMODORO } = require("../utils/constants");
+const { SCHEDULING_WINDOW_DAYS, RECURRENCE, BLOCK_TYPES, POMODORO, SLOT_TYPES } = require("../utils/constants");
 const { copyTimeToDate, addMinutes, minutesToMilliseconds } = require("../utils/timeUtils");
 
 function expandRecurringBlocks(blockedIntervals, startDate) {
@@ -103,7 +103,7 @@ function injectBreaks(freeSlots) {
             result.push({
                 start: new Date(currentStart),
                 end: new Date(workEnd),
-                type: "work",
+                type: SLOT_TYPES.WORK,
                 label: "Work Session"
             });
             currentStart = workEnd;
@@ -121,7 +121,7 @@ function injectBreaks(freeSlots) {
                 result.push({
                     start: new Date(currentStart),
                     end: new Date(breakEnd),
-                    type: BLOCK_TYPES.BREAK,
+                    type: SLOT_TYPES.BREAK,
                     label: sessionCount % POMODORO.SESSIONS_BEFORE_LONG_BREAK === 0
                         ? "Long Break"
                         : "Short Break"
@@ -136,7 +136,7 @@ function injectBreaks(freeSlots) {
             result.push({
                 start: new Date(currentStart),
                 end: new Date(slot.end),
-                type: "work",
+                type: SLOT_TYPES.WORK,
                 label: "Work Session"
             });
         }

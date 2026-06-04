@@ -47,7 +47,8 @@ const SCHEDULE_REASONS = {
     URGENT_DEADLINE: "urgent_deadline",
     HIGHEST_PRIORITY: "highest_priority",
     DEPENDENCY_RESOLVED: "dependency_resolved",
-    TASK_SPLIT: "task_split"
+    TASK_SPLIT: "task_split",
+    USING_SOFT_SLOT: "using_break_time_for_urgent_task"
 }
 
 const RECURRENCE = {
@@ -63,6 +64,11 @@ const BLOCK_TYPES = {
     BREAK: "break"
 }
 
+const SLOT_TYPES = {
+    WORK: "work",
+    BREAK: "break"
+}
+
 module.exports = {
     TASK_STATUSES,
     URGENCY,
@@ -75,5 +81,6 @@ module.exports = {
     ERROR_CODES,
     SCHEDULE_REASONS,
     RECURRENCE,
-    BLOCK_TYPES
+    BLOCK_TYPES,
+    SLOT_TYPES
 };
