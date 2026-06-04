@@ -1,0 +1,26 @@
+{
+  "name": "dayforge",
+  "version": "1.0.0",
+  "description": "An intelligent task scheduling engine that automatically builds and adapts your daily plan around your life.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/24cse-deepika/DayForge.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/24cse-deepika/DayForge/issues"
+  },
+  "homepage": "https://github.com/24cse-deepika/DayForge#readme",
+  "dependencies": {
+    "uuid": "^14.0.0"
+  }
+}

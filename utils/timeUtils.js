@@ -46,6 +46,17 @@ function percentageTimeRemaining(earliestStart, deadline) {
     return Math.round((timeRemaining / totalTime) * 100);
 }
 
+function copyTimeToDate(original, targetDate) {
+    const newDate = new Date(targetDate);
+    newDate.setHours(
+        original.getHours(),
+        original.getMinutes(),
+        original.getSeconds(),
+        original.getMilliseconds()
+    );
+    return newDate;
+}
+
 module.exports = {
     isInPast,
     minutesBetween,
@@ -55,6 +66,7 @@ module.exports = {
     hoursUntilDeadline,
     addMinutes,
     isWithinSlot,
-    percentageTimeRemaining
+    percentageTimeRemaining,
+    copyTimeToDate
 };
     
