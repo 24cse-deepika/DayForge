@@ -5,7 +5,8 @@ function createTask(input) {
     return {
         id: generateUniqueId(),
         name: input.name,
-        duration: input.durationMinutes,
+        originalDuration: input.durationMinutes,  // never changes
+        duration: input.durationMinutes,  // decreases as work is done [in case of splits or progress tracking]
         deadline: new Date(input.deadline),
         priority: input.priority,
         task_status : TASK_STATUSES.PENDING, // default status when created
