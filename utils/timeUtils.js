@@ -37,12 +37,11 @@ function isWithinSlot(date, slot) {
     return date >= slot.start && date <= slot.end;
 }
 
-function percentageTimeRemaining(earliestStart, deadline) {
-    const now = new Date();
-    if (now >= deadline) return 0;
-    if (now <= earliestStart) return 100;
+function percentageTimeRemaining(earliestStart, deadline, currentTime) {
+    if (currentTime >= deadline) return 0;
+    if (currentTime <= earliestStart) return 100;
     const totalTime = deadline - earliestStart;
-    const timeRemaining = deadline - now;
+    const timeRemaining = deadline - currentTime;
     return Math.round((timeRemaining / totalTime) * 100);
 }
 
