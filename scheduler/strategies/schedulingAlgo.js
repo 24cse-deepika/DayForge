@@ -173,12 +173,29 @@ function placeTask(task, slotInfo, currentTime) {
     }
 }
 
+function updateReadyQueue(completedTaskId, tasks, adj, completedTaskIds, readyQueue) {
+    completedTaskIds.add(completedTaskId);
 
+    if (adj[completedTaskId]) {
+        adj[completedTaskId].forEach(dependentId => {
+            if (completedTaskIds.has(dependentId)) return;
+            const dependentTask = tasks.find(t => t.id === dependentId);
+            if (!dependentTask) return;
+            const allDepsCompleted = dependentTask.dependencies.every(depId => completedTaskIds.has(depId));
+            if (allDepsCompleted) {
+                readyQueue.push(dependentTask);
+            }
+        });
+    }
+
+    return readyQueue;
+}
 
 module.exports = {
     scoreTask,
     findActualEndTime,
     getSlotForTask,
     findSlot,
-    feasibilityCheck
+    feasibilityCheck,
+    updateReadyQueue
 };
