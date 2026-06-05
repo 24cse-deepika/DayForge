@@ -37,7 +37,8 @@ const METRICS = {
 const ERROR_CODES = {
     INVALID_INPUT: "invalid_input",
     CYCLE_DETECTED: "cycle_detected",
-    IMPOSSIBLE_TO_SCHEDULE: "impossible_to_schedule",
+    IMPOSSIBLE_TO_SCHEDULE: "impossible_to_schedule",    // task itself can't fit anywhere
+    CAUSES_DEADLINE_MISS: "causes_deadline_miss",        // task causes ANOTHER task to miss ← new
     REFERENCE_NOT_FOUND: "reference_not_found",
     INVALID_DATE: "invalid_date"
 }

@@ -102,8 +102,11 @@ function feasibilityCheck(candidateTask, readyTasks, currentTime, hardSlots, sof
                     return { 
                         feasible: false, 
                         error: { 
-                            code: ERROR_CODES.IMPOSSIBLE_TO_SCHEDULE, 
-                            message: `Scheduling ${candidateTask.name} would cause ${task.name} to miss its deadline.` 
+                            code: ERROR_CODES.CAUSES_DEADLINE_MISS,
+                            message: `Scheduling ${candidateTask.name} would cause ${task.name} to miss its deadline.`,
+                            affectedTaskId: task.id,        // ← which task would be affected
+                            affectedTaskName: task.name,
+                            affectedTaskPriority: task.priority  // ← so we can compare priorities
                         } 
                     };
                 }
@@ -112,8 +115,11 @@ function feasibilityCheck(candidateTask, readyTasks, currentTime, hardSlots, sof
                 return { 
                     feasible: false, 
                     error: { 
-                        code: ERROR_CODES.IMPOSSIBLE_TO_SCHEDULE, 
-                        message: `Scheduling ${candidateTask.name} would cause ${task.name} to miss its deadline.` 
+                        code: ERROR_CODES.CAUSES_DEADLINE_MISS,
+                        message: `Scheduling ${candidateTask.name} would cause ${task.name} to miss its deadline.`,
+                        affectedTaskId: task.id,        // ← which task would be affected
+                        affectedTaskName: task.name,
+                        affectedTaskPriority: task.priority  // ← so we can compare priorities
                     } 
                 };
             }
