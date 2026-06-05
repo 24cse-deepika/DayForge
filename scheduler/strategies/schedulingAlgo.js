@@ -226,6 +226,9 @@ function runScheduler(tasks, readyQueue, adj, hardSlots, softSlots, fromTime) {
                     scheduledSlots.push(placement);
                     reasons[candidateTask.id] = feasibility.reason;
                     currentTime = placement.end;
+                    // advance past any blocked intervals
+                    const nextSlot = hardSlots.find(s => s.type === SLOT_TYPES.WORK && s.start >= currentTime);
+                    if (nextSlot) currentTime = nextSlot.start;
 
                     if (candidateTask.task_status === TASK_STATUSES.COMPLETED) {
                         updateReadyQueue(candidateTask.id, tasks, adj, completedTaskIds, readyQueue);
@@ -272,6 +275,9 @@ function runScheduler(tasks, readyQueue, adj, hardSlots, softSlots, fromTime) {
                     scheduledSlots.push(placement);
                     reasons[tradeoff.candidateTask.id] = SCHEDULE_REASONS.HIGHEST_PRIORITY;
                     currentTime = placement.end;
+                    // advance past any blocked intervals
+                    const nextSlot = hardSlots.find(s => s.type === SLOT_TYPES.WORK && s.start >= currentTime);
+                    if (nextSlot) currentTime = nextSlot.start;
 
                     atRiskTasks.push({
                         taskId: tradeoff.affectedTaskId,
@@ -283,6 +289,8 @@ function runScheduler(tasks, readyQueue, adj, hardSlots, softSlots, fromTime) {
                         updateReadyQueue(tradeoff.candidateTask.id, tasks, adj, completedTaskIds, readyQueue);
                         readyQueue.splice(readyQueue.indexOf(tradeoff.candidateTask), 1);
                     }
+
+                    scheduled = true; // prevents falling through to "truly stuck"
                 }
             } else {
                 // truly stuck — mark all remaining as at risk
