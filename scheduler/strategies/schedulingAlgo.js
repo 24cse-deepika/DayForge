@@ -128,6 +128,7 @@ function feasibilityCheck(candidateTask, readyTasks, currentTime, hardSlots, sof
 }
 
 // find and return the specific slot to place task in along with chunk size
+// it returns the slot info
 function findSlot(task, fromTime, slotsToUse) {
     const minChunk = task.splittable 
         ? (task.minSplitDuration || POMODORO.WORK_DURATION) 
@@ -149,6 +150,30 @@ function findSlot(task, fromTime, slotsToUse) {
     }
     return null;
 }
+
+// place task to the slot and update everything
+function placeTask(task, slotInfo, currentTime) {
+    // updations:
+    task.duration -= slotInfo.chunkSize;
+    task.updated_at = new Date();
+    task.scheduledSlots.push({
+        start: slotInfo.slotStart,
+        end: addMinutes(slotInfo.slotStart, slotInfo.chunkSize),
+        isPartial: task.duration > 0
+    });
+    task.task_status = task.duration > 0 ? TASK_STATUSES.IN_PROGRESS : TASK_STATUSES.COMPLETED;
+    task.progress = ((task.originalDuration - task.duration) / task.originalDuration) * 100;
+
+    return {
+        taskId: task.id,
+        taskName: task.name,
+        start: slotInfo.slotStart,
+        end: addMinutes(slotInfo.slotStart, slotInfo.chunkSize),
+        isPartial: task.duration > 0  // true if task still has remaining work
+    }
+}
+
+
 
 module.exports = {
     scoreTask,
