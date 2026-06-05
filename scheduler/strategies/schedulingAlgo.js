@@ -122,13 +122,38 @@ function feasibilityCheck(candidateTask, readyTasks, currentTime, hardSlots, sof
 
     return { 
         feasible: true, 
-        usesSoftSlots
+        usesSoftSlots,
+        reason: usesSoftSlots ? SCHEDULE_REASONS.URGENT_DEADLINE : SCHEDULE_REASONS.EARLIEST_DEADLINE 
     };
+}
+
+// find and return the specific slot to place task in along with chunk size
+function findSlot(task, fromTime, slotsToUse) {
+    const minChunk = task.splittable 
+        ? (task.minSplitDuration || POMODORO.WORK_DURATION) 
+        : task.duration;
+
+    for (let slot of slotsToUse) {
+        if (slot.end <= fromTime) continue;
+        if (slot.type !== SLOT_TYPES.WORK) continue;
+
+        const slotStart = slot.start < fromTime ? fromTime : slot.start;
+        const slotDuration = minutesBetween(slotStart, slot.end);
+
+        if (slotDuration >= minChunk) {
+            const chunkSize = task.splittable 
+                ? Math.min(task.duration, slotDuration)
+                : task.duration;
+            return { slot, slotStart, chunkSize };
+        }
+    }
+    return null;
 }
 
 module.exports = {
     scoreTask,
     findActualEndTime,
     getSlotForTask,
+    findSlot,
     feasibilityCheck
 };
