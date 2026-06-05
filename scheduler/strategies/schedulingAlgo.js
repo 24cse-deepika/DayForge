@@ -197,11 +197,117 @@ function updateReadyQueue(completedTaskId, tasks, adj, completedTaskIds, readyQu
     return readyQueue;
 }
 
+function runScheduler(tasks, readyQueue, adj, hardSlots, softSlots, fromTime) {
+    const scheduledSlots = [];
+    const atRiskTasks = [];
+    const reasons = {};
+    const completedTaskIds = new Set();
+    let currentTime = new Date(fromTime);
+
+    while (readyQueue.length > 0) {
+        // rescore and resort every iteration
+        readyQueue.forEach(task => {
+            task._score = scoreTask(task, currentTime);
+        });
+        readyQueue.sort((a, b) => b._score - a._score);
+
+        let scheduled = false;
+        const feasibilityErrors = [];
+
+        for (let candidateTask of readyQueue) {
+            const feasibility = feasibilityCheck(candidateTask, readyQueue, currentTime, hardSlots, softSlots);
+            
+            if (feasibility.feasible) {
+                const slotsToUse = feasibility.usesSoftSlots ? softSlots : hardSlots;
+                const slotInfo = findSlot(candidateTask, currentTime, slotsToUse);
+                
+                if (slotInfo) {
+                    const placement = placeTask(candidateTask, slotInfo);
+                    scheduledSlots.push(placement);
+                    reasons[candidateTask.id] = feasibility.reason;
+                    currentTime = placement.end;
+
+                    if (candidateTask.task_status === TASK_STATUSES.COMPLETED) {
+                        updateReadyQueue(candidateTask.id, tasks, adj, completedTaskIds, readyQueue);
+                        readyQueue.splice(readyQueue.indexOf(candidateTask), 1);
+                    }
+                    // if partial — task stays in readyQueue with updated duration
+
+                    scheduled = true;
+                    break; // restart loop with updated scores
+                }
+            } else {
+                if (feasibility.error.code === ERROR_CODES.CAUSES_DEADLINE_MISS) {
+                    feasibilityErrors.push({
+                        candidateTask,
+                        affectedTaskId: feasibility.error.affectedTaskId,
+                        affectedTaskName: feasibility.error.affectedTaskName,
+                        affectedTaskPriority: feasibility.error.affectedTaskPriority
+                    });
+                } else {
+                    // IMPOSSIBLE_TO_SCHEDULE — mark as at risk immediately
+                    atRiskTasks.push({
+                        taskId: candidateTask.id,
+                        taskName: candidateTask.name,
+                        reason: feasibility.error.message
+                    });
+                    readyQueue.splice(readyQueue.indexOf(candidateTask), 1);
+                }
+            }
+        }
+
+        // no task was scheduled this iteration
+        if (!scheduled) {
+            // analyze feasibilityErrors — can we trade off lower priority affected task?
+            const tradeoff = feasibilityErrors.find(e => 
+                e.candidateTask.priority > e.affectedTaskPriority
+            );
+
+            if (tradeoff) {
+                // schedule candidate, mark affected as at risk
+                const slotsToUse = hardSlots;
+                const slotInfo = findSlot(tradeoff.candidateTask, currentTime, slotsToUse);
+                if (slotInfo) {
+                    const placement = placeTask(tradeoff.candidateTask, slotInfo);
+                    scheduledSlots.push(placement);
+                    reasons[tradeoff.candidateTask.id] = SCHEDULE_REASONS.HIGHEST_PRIORITY;
+                    currentTime = placement.end;
+
+                    atRiskTasks.push({
+                        taskId: tradeoff.affectedTaskId,
+                        taskName: tradeoff.affectedTaskName,
+                        reason: `Deprioritized due to higher priority task ${tradeoff.candidateTask.name}`
+                    });
+
+                    if (tradeoff.candidateTask.task_status === TASK_STATUSES.COMPLETED) {
+                        updateReadyQueue(tradeoff.candidateTask.id, tasks, adj, completedTaskIds, readyQueue);
+                        readyQueue.splice(readyQueue.indexOf(tradeoff.candidateTask), 1);
+                    }
+                }
+            } else {
+                // truly stuck — mark all remaining as at risk
+                readyQueue.forEach(task => {
+                    atRiskTasks.push({
+                        taskId: task.id,
+                        taskName: task.name,
+                        reason: "Could not schedule without causing deadline misses"
+                    });
+                });
+                break; // exit while loop
+            }
+        }
+    }
+
+    return { scheduledSlots, atRiskTasks, reasons };
+}
+
+
 module.exports = {
     scoreTask,
     findActualEndTime,
     getSlotForTask,
     findSlot,
     feasibilityCheck,
-    updateReadyQueue
+    updateReadyQueue,
+    runScheduler
 };
