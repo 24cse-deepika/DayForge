@@ -18,7 +18,6 @@ function findActualEndTime(task, fromTime, slots) {
         const slotStart = slot.start < currentTime ? currentTime : slot.start;
         const slotDuration = minutesBetween(slotStart, slot.end);
 
-        // skip slots too small for a splittable task's minimum chunk
         if (task.splittable && slotDuration < task.minSplitDuration) continue;
         
         if (slotDuration >= remainingDuration) {

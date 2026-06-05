@@ -110,7 +110,6 @@ function injectBreaks(freeSlots) {
             remainingTime -= POMODORO.WORK_DURATION;
             sessionCount++;
 
-            // determine break type
             const breakDuration = (sessionCount % POMODORO.SESSIONS_BEFORE_LONG_BREAK === 0)
                 ? POMODORO.LONG_BREAK_DURATION
                 : POMODORO.BREAK_DURATION;
