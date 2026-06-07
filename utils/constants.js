@@ -63,7 +63,7 @@ const RECURRENCE = {
     CUSTOM : "custom"
 }
 
-BREAK_TYPES = {
+const BLOCK_TYPES = {
     BLOCKED : "blocked",
     BREAK : "break"
 }
@@ -79,5 +79,6 @@ module.exports = {
     METRICS,
     ERROR_CODES,
     SCHEDULE_REASONS,
-    RECURRENCE
+    RECURRENCE,
+    BLOCK_TYPES
 };

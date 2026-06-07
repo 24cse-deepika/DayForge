@@ -1,6 +1,16 @@
 const {ERROR_CODES} = require('../utils/constants');
 
+
 function resolveDependencies(tasks) {
+    const taskIds = new Set(tasks.map(t => t.id));
+    for (const task of tasks) {
+        for (const depId of (task.dependencies || [])) {
+            if (!taskIds.has(depId)) {
+                return { success: false, error: { code: ERROR_CODES.REFERENCE_NOT_FOUND, message: `Dependency ID "${depId}" not found.` } };
+            }
+        }
+    }
+    
     const adj = {};
     let ready_queue = []; // tasks with no dependencies, ready to be scheduled
     
@@ -14,9 +24,7 @@ function resolveDependencies(tasks) {
         };
 
         if((task.dependencies || []).length === 0) {
-            if((task.dependencies || []).length === 0) {
-                ready_queue.push(task);  
-            }
+            ready_queue.push(task);  
         }
     });
 
