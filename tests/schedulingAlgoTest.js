@@ -1,272 +1,202 @@
-const assert = require("assert");
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { scoreTask, findSlot, placeTask, feasibilityCheck, updateReadyQueue } = require('../scheduler/strategies/schedulingAlgo');
+const { TASK_STATUSES, ERROR_CODES } = require('../utils/constants');
 
-const {
-    scoreTask,
-    findSlot,
-    placeTask,
-    feasibilityCheck,
-    updateReadyQueue
-} = require("../scheduler/strategies/schedulingAlgo");
+const NOW = new Date('2026-06-07T09:00:00');
 
-let passed = 0;
-let failed = 0;
-
-function runTest(name, fn) {
-    try {
-        fn();
-        console.log(`✅ ${name}`);
-        passed++;
-    } catch (err) {
-        console.log(`❌ ${name}`);
-        console.log(`   ${err.message}`);
-        failed++;
-    }
+function makeTask({ id = 'task-1', name = 'Test Task', duration, originalDuration, splittable = false, minSplitDuration = null, deadline, earliestStart = NOW, dependencies = [], priority = 3 }) {
+    return { id, name, duration, originalDuration: originalDuration ?? duration, splittable, minSplitDuration, deadline: new Date(deadline), earliestStart: new Date(earliestStart), dependencies, priority, task_status: 'pending', progress: 0, scheduledSlots: [] };
 }
 
-console.log("\n=== Scheduling Algorithm Tests ===\n");
+function makeSlot(start, end) {
+    return { start: new Date(start), end: new Date(end) };
+}
 
-/* =====================================================
-   scoreTask()
-===================================================== */
+// ── scoreTask ────────────────────────────────────────────────────────────────
 
-runTest("Higher priority task gets higher score", () => {
-
-    const currentTime = new Date("2026-06-01");
-
-    const lowPriority = {
-        priority: 1,
-        earliestStart: new Date("2026-06-01"),
-        deadline: new Date("2026-06-10")
-    };
-
-    const highPriority = {
-        priority: 5,
-        earliestStart: new Date("2026-06-01"),
-        deadline: new Date("2026-06-10")
-    };
-
-    assert.ok(
-        scoreTask(highPriority, currentTime) >
-        scoreTask(lowPriority, currentTime)
-    );
+test('scoreTask: higher priority wins when deadline is same', () => {
+    const low  = makeTask({ duration: 60, deadline: '2026-06-10T00:00:00', priority: 1 });
+    const high = makeTask({ duration: 60, deadline: '2026-06-10T00:00:00', priority: 5 });
+    assert.ok(scoreTask(high, NOW) > scoreTask(low, NOW));
 });
 
-/* =====================================================
-   findSlot()
-===================================================== */
+test('scoreTask: past deadline gives urgency of 1', () => {
+    const task = makeTask({ duration: 60, deadline: '2026-06-06T00:00:00', priority: 5 });
+    assert.equal(scoreTask(task, NOW), 1.0);
+});
 
-runTest("Splittable task can partially fit", () => {
-
-    const task = {
-        duration: 300,
-        splittable: true,
-        minSplitDuration: 60,
-        earliestStart: new Date("2026-06-01T09:00:00")
-    };
-
-    const slots = [
-        {
-            start: new Date("2026-06-01T09:00:00"),
-            end: new Date("2026-06-01T11:00:00")
-        }
+test('scoreTask: score is always between 0 and 1', () => {
+    const cases = [
+        makeTask({ duration: 60, deadline: '2026-06-14T00:00:00', priority: 1 }),
+        makeTask({ duration: 60, deadline: '2026-06-06T00:00:00', priority: 5 }),
+        makeTask({ duration: 60, deadline: '2026-06-08T00:00:00', priority: 3 }),
     ];
-
-    const result = findSlot(
-        task,
-        new Date("2026-06-01T09:00:00"),
-        slots
-    );
-
-    assert.strictEqual(result.success, true);
-    assert.strictEqual(result.isPartial, true);
+    cases.forEach(task => {
+        const score = scoreTask(task, NOW);
+        assert.ok(score >= 0 && score <= 1, `Score out of range: ${score}`);
+    });
 });
 
-runTest("Non-splittable task cannot partially fit", () => {
+// ── findSlot ─────────────────────────────────────────────────────────────────
 
-    const task = {
-        duration: 300,
-        splittable: false,
-        earliestStart: new Date("2026-06-01T09:00:00")
-    };
-
-    const slots = [
-        {
-            start: new Date("2026-06-01T09:00:00"),
-            end: new Date("2026-06-01T10:00:00")
-        }
-    ];
-
-    const result = findSlot(
-        task,
-        new Date("2026-06-01T09:00:00"),
-        slots
-    );
-
-    assert.strictEqual(result.success, false);
+test('findSlot: non-splittable fits with break', () => {
+    const task = makeTask({ duration: 60, splittable: false, deadline: '2026-06-10T00:00:00' });
+    const result = findSlot(task, NOW, [makeSlot('2026-06-07T09:00:00', '2026-06-07T11:00:00')]);
+    assert.equal(result.success, true);
+    assert.equal(result.isPartial, false);
+    assert.equal(result.fittedDuration, 60);
+    assert.equal(result.breakGiven, true);
 });
 
-/* =====================================================
-   placeTask()
-===================================================== */
-
-runTest("placeTask updates progress correctly", () => {
-
-    const task = {
-        id: "1",
-        name: "Test Task",
-        duration: 120,
-        originalDuration: 120,
-        task_status: "pending",
-        progress: 0,
-        scheduledSlots: []
-    };
-
-    placeTask(
-        task,
-        {
-            fittedDuration: 60,
-            start: new Date(),
-            end: new Date(),
-            isPartial: true
-        },
-        "test"
-    );
-
-    assert.strictEqual(task.progress, 50);
+test('findSlot: non-splittable fits without break when slot too tight', () => {
+    // 60 min task needs 75 with break — slot is only 70 min
+    const task = makeTask({ duration: 60, splittable: false, deadline: '2026-06-10T00:00:00' });
+    const result = findSlot(task, NOW, [makeSlot('2026-06-07T09:00:00', '2026-06-07T10:10:00')]);
+    assert.equal(result.success, true);
+    assert.equal(result.breakGiven, false);
+    assert.equal(result.fittedDuration, 60);
 });
 
-runTest("placeTask marks task completed", () => {
-
-    const task = {
-        id: "1",
-        name: "Test Task",
-        duration: 120,
-        originalDuration: 120,
-        task_status: "pending",
-        progress: 0,
-        scheduledSlots: []
-    };
-
-    placeTask(
-        task,
-        {
-            fittedDuration: 120,
-            start: new Date(),
-            end: new Date(),
-            isPartial: false
-        },
-        "test"
-    );
-
-    assert.strictEqual(task.duration, 0);
-    assert.strictEqual(task.progress, 100);
+test('findSlot: non-splittable returns failure when slot too small', () => {
+    const task = makeTask({ duration: 120, splittable: false, deadline: '2026-06-10T00:00:00' });
+    const result = findSlot(task, NOW, [makeSlot('2026-06-07T09:00:00', '2026-06-07T09:30:00')]);
+    assert.equal(result.success, false);
 });
 
-/* =====================================================
-   feasibilityCheck()
-===================================================== */
-
-runTest("Feasibility check succeeds when task fits", () => {
-
-    const task = {
-        duration: 60,
-        deadline: new Date("2026-06-02"),
-        earliestStart: new Date("2026-06-01"),
-        splittable: false
-    };
-
-    const slots = [
-        {
-            start: new Date("2026-06-01T09:00:00"),
-            end: new Date("2026-06-01T12:00:00")
-        }
-    ];
-
-    const result = feasibilityCheck(
-        task,
-        new Date("2026-06-01"),
-        slots,
-        slots
-    );
-
-    assert.strictEqual(result.success, true);
+test('findSlot: splittable uses max available time, not just minSplitDuration', () => {
+    // 120 min task, minSplit 30, slot has 90 min — should fit more than 30
+    const task = makeTask({ duration: 120, splittable: true, minSplitDuration: 30, deadline: '2026-06-10T00:00:00' });
+    const result = findSlot(task, NOW, [makeSlot('2026-06-07T09:00:00', '2026-06-07T10:30:00')]);
+    assert.equal(result.success, true);
+    assert.equal(result.isPartial, true);
+    assert.ok(result.fittedDuration > 30, `Expected more than minSplit, got ${result.fittedDuration}`);
 });
 
-runTest("Feasibility check fails when task cannot fit", () => {
-
-    const task = {
-        duration: 500,
-        deadline: new Date("2026-06-01T12:00:00"),
-        earliestStart: new Date("2026-06-01T09:00:00"),
-        splittable: false
-    };
-
-    const slots = [
-        {
-            start: new Date("2026-06-01T09:00:00"),
-            end: new Date("2026-06-01T10:00:00")
-        }
-    ];
-
-    const result = feasibilityCheck(
-        task,
-        new Date("2026-06-01"),
-        slots,
-        slots
-    );
-
-    assert.strictEqual(result.success, false);
+test('findSlot: splittable fails when slot smaller than minSplitDuration', () => {
+    const task = makeTask({ duration: 120, splittable: true, minSplitDuration: 60, deadline: '2026-06-10T00:00:00' });
+    const result = findSlot(task, NOW, [makeSlot('2026-06-07T09:00:00', '2026-06-07T09:30:00')]);
+    assert.equal(result.success, false);
 });
 
-/* =====================================================
-   updateReadyQueue()
-===================================================== */
+test('findSlot: earliestStart trims effectiveStart', () => {
+    const task = makeTask({ duration: 60, splittable: false, deadline: '2026-06-10T00:00:00', earliestStart: '2026-06-07T11:00:00' });
+    const result = findSlot(task, NOW, [makeSlot('2026-06-07T09:00:00', '2026-06-07T13:00:00')]);
+    assert.equal(result.success, true);
+    assert.equal(result.start.getTime(), new Date('2026-06-07T11:00:00').getTime());
+});
 
-runTest("Completed dependency unlocks child task", () => {
+test('findSlot: returns failure when no slots provided', () => {
+    const task = makeTask({ duration: 60, splittable: false, deadline: '2026-06-10T00:00:00' });
+    assert.equal(findSlot(task, NOW, []).success, false);
+});
 
-    const completedTaskIds = new Set();
+// ── placeTask ────────────────────────────────────────────────────────────────
 
-    const parent = {
-        id: "A",
-        dependencies: []
-    };
+test('placeTask: duration decreases by fittedDuration only', () => {
+    const task = makeTask({ duration: 120, deadline: '2026-06-10T00:00:00' });
+    const slotInfo = { fittedDuration: 60, isPartial: true, start: new Date(NOW), end: new Date(NOW.getTime() + 75 * 60000), breakGiven: true };
+    placeTask(task, slotInfo, 'test');
+    assert.equal(task.duration, 60);
+});
 
-    const child = {
-        id: "B",
-        dependencies: ["A"]
-    };
+test('placeTask: progress calculated correctly', () => {
+    const task = makeTask({ duration: 120, deadline: '2026-06-10T00:00:00' });
+    const slotInfo = { fittedDuration: 60, isPartial: true, start: new Date(NOW), end: new Date(NOW.getTime() + 75 * 60000), breakGiven: true };
+    placeTask(task, slotInfo, 'test');
+    assert.equal(task.progress, 50);
+});
 
+test('placeTask: status is COMPLETED when duration hits 0', () => {
+    const task = makeTask({ duration: 60, deadline: '2026-06-10T00:00:00' });
+    const slotInfo = { fittedDuration: 60, isPartial: false, start: new Date(NOW), end: new Date(NOW.getTime() + 75 * 60000), breakGiven: true };
+    placeTask(task, slotInfo, 'test');
+    assert.equal(task.task_status, TASK_STATUSES.COMPLETED);
+    assert.equal(task.progress, 100);
+});
+
+test('placeTask: status is SCHEDULED when work remains', () => {
+    const task = makeTask({ duration: 120, deadline: '2026-06-10T00:00:00' });
+    const slotInfo = { fittedDuration: 60, isPartial: true, start: new Date(NOW), end: new Date(NOW.getTime() + 75 * 60000), breakGiven: true };
+    placeTask(task, slotInfo, 'test');
+    assert.equal(task.task_status, TASK_STATUSES.SCHEDULED);
+});
+
+test('placeTask: scheduledSlots entry has correct shape', () => {
+    const task = makeTask({ duration: 60, deadline: '2026-06-10T00:00:00' });
+    const slotInfo = { fittedDuration: 60, isPartial: false, start: new Date(NOW), end: new Date(NOW.getTime() + 75 * 60000), breakGiven: true };
+    placeTask(task, slotInfo, 'earliest_deadline');
+    const entry = task.scheduledSlots[0];
+    assert.ok(entry.taskId);
+    assert.ok(entry.taskName);
+    assert.ok(entry.start);
+    assert.ok(entry.end);
+    assert.equal(typeof entry.isPartial, 'boolean');
+    assert.equal(entry.reason, 'earliest_deadline');
+});
+
+// ── feasibilityCheck ─────────────────────────────────────────────────────────
+
+test('feasibilityCheck: task fits in hardSlots', () => {
+    const task = makeTask({ duration: 60, splittable: false, deadline: '2026-06-10T00:00:00' });
+    const slots = [makeSlot('2026-06-07T09:00:00', '2026-06-07T12:00:00')];
+    const result = feasibilityCheck(task, NOW, slots, slots);
+    assert.equal(result.success, true);
+    assert.equal(result.needsSoftSlots, false);
+});
+
+test('feasibilityCheck: task fits only in softSlots', () => {
+    const task = makeTask({ duration: 60, splittable: false, deadline: '2026-06-10T00:00:00' });
+    const hardSlots = [makeSlot('2026-06-07T09:00:00', '2026-06-07T09:20:00')]; // too small
+    const softSlots = [makeSlot('2026-06-07T09:00:00', '2026-06-07T12:00:00')];
+    const result = feasibilityCheck(task, NOW, hardSlots, softSlots);
+    assert.equal(result.success, true);
+    assert.equal(result.needsSoftSlots, true);
+});
+
+test('feasibilityCheck: impossible task returns correct error code', () => {
+    const task = makeTask({ duration: 500, splittable: false, deadline: '2026-06-07T09:30:00' });
+    const tinySlot = [makeSlot('2026-06-07T09:00:00', '2026-06-07T09:20:00')];
+    const result = feasibilityCheck(task, NOW, tinySlot, tinySlot);
+    assert.equal(result.success, false);
+    assert.equal(result.error.code, ERROR_CODES.IMPOSSIBLE_TO_SCHEDULE);
+});
+
+// ── updateReadyQueue ─────────────────────────────────────────────────────────
+
+test('updateReadyQueue: unlocks child when only dep completes', () => {
+    const parent = { id: 'A', dependencies: [] };
+    const child  = { id: 'B', dependencies: ['A'] };
     const readyQueue = [];
-
-    updateReadyQueue(
-        "A",
-        [parent, child],
-        { A: ["B"] },
-        completedTaskIds,
-        readyQueue
-    );
-
-    assert.strictEqual(
-        readyQueue.length,
-        1
-    );
-
-    assert.strictEqual(
-        readyQueue[0].id,
-        "B"
-    );
+    updateReadyQueue('A', [parent, child], { A: ['B'] }, new Set(), readyQueue);
+    assert.equal(readyQueue.length, 1);
+    assert.equal(readyQueue[0].id, 'B');
 });
 
-/* =====================================================
-   Final Results
-===================================================== */
+test('updateReadyQueue: does not unlock child if other deps still pending', () => {
+    const taskA = { id: 'A', dependencies: [] };
+    const taskB = { id: 'B', dependencies: [] };
+    const taskC = { id: 'C', dependencies: ['A', 'B'] };
+    const readyQueue = [];
+    updateReadyQueue('A', [taskA, taskB, taskC], { A: ['C'], B: ['C'] }, new Set(), readyQueue);
+    assert.ok(!readyQueue.includes(taskC));
+});
 
-console.log("\n=== RESULTS ===");
-console.log(`Passed: ${passed}`);
-console.log(`Failed: ${failed}`);
+test('updateReadyQueue: unlocks child only after all deps complete', () => {
+    const taskA = { id: 'A', dependencies: [] };
+    const taskB = { id: 'B', dependencies: [] };
+    const taskC = { id: 'C', dependencies: ['A', 'B'] };
+    const completed = new Set();
+    const readyQueue = [];
+    updateReadyQueue('A', [taskA, taskB, taskC], { A: ['C'], B: ['C'] }, completed, readyQueue);
+    assert.ok(!readyQueue.includes(taskC));
+    updateReadyQueue('B', [taskA, taskB, taskC], { A: ['C'], B: ['C'] }, completed, readyQueue);
+    assert.ok(readyQueue.includes(taskC));
+});
 
-if (failed === 0) {
-    console.log("\n🎉 ALL SCHEDULING TESTS PASSED");
-} else {
-    console.log("\n⚠️ SOME TESTS FAILED");
-}
+test('updateReadyQueue: task with no dependents — queue unchanged', () => {
+    const taskA = { id: 'A', dependencies: [] };
+    const readyQueue = [];
+    updateReadyQueue('A', [taskA], {}, new Set(), readyQueue);
+    assert.equal(readyQueue.length, 0);
+});

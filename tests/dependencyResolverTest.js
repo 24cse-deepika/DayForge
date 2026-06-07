@@ -1,121 +1,85 @@
-const assert = require("assert");
-const {
-    resolveDependencies
-} = require("../scheduler/dependencyResolver");
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { resolveDependencies } = require('../scheduler/dependencyResolver');
 
-let passed = 0;
-let failed = 0;
+// ── resolveDependencies ───────────────────────────────────────────────────────
 
-function runTest(name, fn) {
-    try {
-        fn();
-        console.log(`✅ ${name}`);
-        passed++;
-    } catch (err) {
-        console.log(`❌ ${name}`);
-        console.log(`   ${err.message}`);
-        failed++;
-    }
-}
-
-console.log("\n=== Dependency Resolver Tests ===\n");
-
-runTest("Valid dependency chain", () => {
+test('resolveDependencies: linear chain A→B→C, only A in readyQueue', () => {
     const tasks = [
-        {
-            id: "A",
-            dependencies: []
-        },
-        {
-            id: "B",
-            dependencies: ["A"]
-        },
-        {
-            id: "C",
-            dependencies: ["B"]
-        }
+        { id: 'A', dependencies: [] },
+        { id: 'B', dependencies: ['A'] },
+        { id: 'C', dependencies: ['B'] }
     ];
-
     const result = resolveDependencies(tasks);
-
-    assert.strictEqual(result.success, true);
-    assert.strictEqual(result.readyQueue.length, 1);
-    assert.strictEqual(result.readyQueue[0].id, "A");
+    assert.equal(result.success, true);
+    assert.equal(result.readyQueue.length, 1);
+    assert.equal(result.readyQueue[0].id, 'A');
 });
 
-runTest("Detect missing dependency", () => {
+test('resolveDependencies: multiple root tasks both in readyQueue', () => {
     const tasks = [
-        {
-            id: "A",
-            dependencies: ["DOES_NOT_EXIST"]
-        }
+        { id: 'A', dependencies: [] },
+        { id: 'B', dependencies: [] },
+        { id: 'C', dependencies: ['A'] }
     ];
-
     const result = resolveDependencies(tasks);
-
-    assert.strictEqual(result.success, false);
+    assert.equal(result.success, true);
+    assert.equal(result.readyQueue.length, 2);
+    const ids = result.readyQueue.map(t => t.id);
+    assert.ok(ids.includes('A'));
+    assert.ok(ids.includes('B'));
 });
 
-runTest("Detect simple cycle", () => {
+test('resolveDependencies: all tasks independent — all in readyQueue', () => {
     const tasks = [
-        {
-            id: "A",
-            dependencies: ["B"]
-        },
-        {
-            id: "B",
-            dependencies: ["A"]
-        }
+        { id: 'A', dependencies: [] },
+        { id: 'B', dependencies: [] },
+        { id: 'C', dependencies: [] }
     ];
-
     const result = resolveDependencies(tasks);
-
-    assert.strictEqual(result.success, false);
+    assert.equal(result.success, true);
+    assert.equal(result.readyQueue.length, 3);
 });
 
-runTest("Detect 3-node cycle", () => {
+test('resolveDependencies: simple cycle A→B→A fails', () => {
     const tasks = [
-        {
-            id: "A",
-            dependencies: ["C"]
-        },
-        {
-            id: "B",
-            dependencies: ["A"]
-        },
-        {
-            id: "C",
-            dependencies: ["B"]
-        }
+        { id: 'A', dependencies: ['B'] },
+        { id: 'B', dependencies: ['A'] }
     ];
-
     const result = resolveDependencies(tasks);
-
-    assert.strictEqual(result.success, false);
+    assert.equal(result.success, false);
 });
 
-runTest("Multiple root tasks", () => {
+test('resolveDependencies: 3-node cycle A→B→C→A fails', () => {
     const tasks = [
-        {
-            id: "A",
-            dependencies: []
-        },
-        {
-            id: "B",
-            dependencies: []
-        },
-        {
-            id: "C",
-            dependencies: ["A"]
-        }
+        { id: 'A', dependencies: ['C'] },
+        { id: 'B', dependencies: ['A'] },
+        { id: 'C', dependencies: ['B'] }
     ];
-
     const result = resolveDependencies(tasks);
-
-    assert.strictEqual(result.success, true);
-    assert.strictEqual(result.readyQueue.length, 2);
+    assert.equal(result.success, false);
 });
 
-console.log("\n=== RESULTS ===");
-console.log(`Passed: ${passed}`);
-console.log(`Failed: ${failed}`);
+test('resolveDependencies: missing dependency ID fails', () => {
+    const tasks = [{ id: 'A', dependencies: ['DOES_NOT_EXIST'] }];
+    const result = resolveDependencies(tasks);
+    assert.equal(result.success, false);
+});
+
+test('resolveDependencies: adj map correctly maps parent to children', () => {
+    const tasks = [
+        { id: 'A', dependencies: [] },
+        { id: 'B', dependencies: ['A'] },
+        { id: 'C', dependencies: ['A'] }
+    ];
+    const result = resolveDependencies(tasks);
+    assert.equal(result.success, true);
+    assert.ok(result.adj['A'].includes('B'));
+    assert.ok(result.adj['A'].includes('C'));
+});
+
+test('resolveDependencies: empty task list succeeds with empty queue', () => {
+    const result = resolveDependencies([]);
+    assert.equal(result.success, true);
+    assert.equal(result.readyQueue.length, 0);
+});
