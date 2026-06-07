@@ -1,4 +1,4 @@
-const { SCHEDULING_WINDOW_DAYS, RECURRENCE, BLOCK_TYPES, POMODORO, SLOT_TYPES } = require("../utils/constants");
+const { SCHEDULING_WINDOW_DAYS, RECURRENCE, BLOCK_TYPES } = require("../utils/constants");
 const { copyTimeToDate, addMinutes, minutesToMilliseconds } = require("../utils/timeUtils");
 
 function expandRecurringBlocks(blockedIntervals, startDate) {
@@ -48,6 +48,7 @@ function expandRecurringBlocks(blockedIntervals, startDate) {
     return expandedBlocks;
 }
 
+// called by the main function to build free slots based on expanded blocked intervals
 function buildFreeSlots(blockedIntervals, startDate) {
     const endDate = new Date(startDate.getTime() + SCHEDULING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const expandedBlocks = expandRecurringBlocks(blockedIntervals, startDate);
@@ -89,75 +90,7 @@ function extractFreeSlots(blocks, startDate, endDate) {
     return freeSlots;
 }
 
-function injectBreaks(freeSlots) {
-    const result = [];       // combined work + break slots
-    let sessionCount = 0;    // persists across free slots
-
-    freeSlots.forEach(slot => {
-        let currentStart = new Date(slot.start);
-        let remainingTime = (slot.end - slot.start) / (1000 * 60); // in minutes
-
-        while (remainingTime >= POMODORO.WORK_DURATION) {
-            // push work session
-            const workEnd = addMinutes(currentStart, POMODORO.WORK_DURATION);
-            result.push({
-                start: new Date(currentStart),
-                end: new Date(workEnd),
-                type: SLOT_TYPES.WORK,
-                label: "Work Session"
-            });
-            currentStart = workEnd;
-            remainingTime -= POMODORO.WORK_DURATION;
-            sessionCount++;
-
-            const breakDuration = (sessionCount % POMODORO.SESSIONS_BEFORE_LONG_BREAK === 0)
-                ? POMODORO.LONG_BREAK_DURATION
-                : POMODORO.BREAK_DURATION;
-
-            // only add break if there is enough time remaining
-            if (remainingTime >= breakDuration) {
-                const breakEnd = addMinutes(currentStart, breakDuration);
-                result.push({
-                    start: new Date(currentStart),
-                    end: new Date(breakEnd),
-                    type: SLOT_TYPES.BREAK,
-                    label: sessionCount % POMODORO.SESSIONS_BEFORE_LONG_BREAK === 0
-                        ? "Long Break"
-                        : "Short Break"
-                });
-                currentStart = breakEnd;
-                remainingTime -= breakDuration;
-            }
-        }
-
-        // any remaining time less than a full pomodoro — still usable for short tasks
-        if (remainingTime > 0) {
-            result.push({
-                start: new Date(currentStart),
-                end: new Date(slot.end),
-                type: SLOT_TYPES.WORK,
-                label: "Work Session"
-            });
-        }
-    });
-
-    return result;
-}
-
-// main export — this is what the scheduler calls
-function getSchedulableSlots(blockedIntervals, startDate) {
-    const { hardSlots, softSlots } = buildFreeSlots(blockedIntervals, startDate);
-    
-    // inject pomodoro breaks into both slot types
-    const hardSchedulable = injectBreaks(hardSlots);
-    const softSchedulable = injectBreaks(softSlots);
-    
-    return { hardSchedulable, softSchedulable };
-}
-
 module.exports = {
     expandRecurringBlocks,
-    buildFreeSlots,
-    injectBreaks,
-    getSchedulableSlots
+    buildFreeSlots
 };

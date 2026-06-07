@@ -22,11 +22,14 @@ const PRIORITY = {
     MAX: 5
 }
 
-const POMODORO = {
-    WORK_DURATION : 25,
-    BREAK_DURATION : 5,
-    LONG_BREAK_DURATION : 15,
-    SESSIONS_BEFORE_LONG_BREAK : 4
+const BREAK_RULES = {
+    NO_BREAK_MAX: 20,        // ≤ 20 min → no break
+    SHORT_BREAK_MAX: 40,     // 21–40 min → 5 min break
+    MEDIUM_BREAK_MAX: 180,   // 41–180 min → 15 min break
+                             // > 180 min → 30 min break
+    SHORT_BREAK: 5,
+    MEDIUM_BREAK: 15,
+    LONG_BREAK: 30
 }
 
 const METRICS = {
@@ -49,7 +52,7 @@ const SCHEDULE_REASONS = {
     HIGHEST_PRIORITY: "highest_priority",
     DEPENDENCY_RESOLVED: "dependency_resolved",
     TASK_SPLIT: "task_split",
-    USING_SOFT_SLOT: "using_break_time_for_urgent_task"
+    EARLIEST_DEADLINE: "earliest_deadline"
 }
 
 const RECURRENCE = {
@@ -60,14 +63,9 @@ const RECURRENCE = {
     CUSTOM : "custom"
 }
 
-const BLOCK_TYPES = {
+BREAK_TYPES = {
     BLOCKED : "blocked",
-    BREAK: "break"
-}
-
-const SLOT_TYPES = {
-    WORK: "work",
-    BREAK: "break"
+    BREAK : "break"
 }
 
 module.exports = {
@@ -77,11 +75,9 @@ module.exports = {
     URGENCY_THRESHOLD_PERCENT,
     CRITICAL_THRESHOLD_HOURS,
     PRIORITY,
-    POMODORO,
+    BREAK_RULES,
     METRICS,
     ERROR_CODES,
     SCHEDULE_REASONS,
-    RECURRENCE,
-    BLOCK_TYPES,
-    SLOT_TYPES
+    RECURRENCE
 };

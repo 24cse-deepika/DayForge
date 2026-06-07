@@ -56,7 +56,7 @@ function resolveDependencies(tasks) {
     }
 
     if(res.length !== tasks.length) {
-        return { success: false, error: { code: EERROR_CODES.CYCLE_DETECTED, message: "Cyclic dependency detected among tasks." } };
+        return { success: false, error: { code: ERROR_CODES.CYCLE_DETECTED, message: "Cyclic dependency detected among tasks." } };
     }
 
     return { success: true, readyQueue: ready_queue, adj};

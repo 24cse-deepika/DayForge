@@ -12,7 +12,7 @@ function createTask(input) {
         task_status : TASK_STATUSES.PENDING, // default status when created
         urgency: URGENCY.NORMAL, // default urgency, can be updated later
         splittable: input.splittable ?? false,
-        min_split_duration: input.minSplitDuration || null,
+        minSplitDuration: input.minSplitDuration || 25, // default to 25 minutes if not provided, according to Pomodoro technique
         category: input.category || null,
         progress : 0, // percentage of completion, starts at 0
         created_at: new Date(),

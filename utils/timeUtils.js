@@ -1,3 +1,5 @@
+const { BREAK_RULES } = require("./constants");
+
 function isInPast(date) {
     const now = new Date();
     return date < now;
@@ -56,6 +58,21 @@ function copyTimeToDate(original, targetDate) {
     return newDate;
 }
 
+function getBreakDuration(taskDuration) {
+    if (taskDuration <= BREAK_RULES.NO_BREAK_MAX) {
+        return 0;
+    } 
+    else if (taskDuration <= BREAK_RULES.SHORT_BREAK_MAX) {
+        return BREAK_RULES.SHORT_BREAK;
+    }
+    else if (taskDuration <= BREAK_RULES.MEDIUM_BREAK_MAX) {
+        return BREAK_RULES.MEDIUM_BREAK;
+    }
+    else {
+        return BREAK_RULES.LONG_BREAK;
+    }   
+}
+
 module.exports = {
     isInPast,
     minutesBetween,
@@ -66,6 +83,7 @@ module.exports = {
     addMinutes,
     isWithinSlot,
     percentageTimeRemaining,
-    copyTimeToDate
+    copyTimeToDate,
+    getBreakDuration
 };
     

@@ -1,4 +1,4 @@
-const { ERROR_CODES, RECURRENCE, BLOCK_TYPES } = require('../utils/constants');
+const { ERROR_CODES, RECURRENCE} = require('../utils/constants');
 const { isInPast, isValidDate } = require('../utils/timeUtils');
 
 
@@ -52,9 +52,7 @@ function validateBlockedInterval(input) {
     if (input.recurrence === RECURRENCE.CUSTOM && (!input.customDays || !Array.isArray(input.customDays) || input.customDays.length === 0)) {
         return { success: false, error: { code: ERROR_CODES.INVALID_INPUT, message: "For custom recurrence, customDays must be a non-empty array of day names." } };
     }
-    if (input.type && !Object.values(BLOCK_TYPES).includes(input.type)) {
-        return { success: false, error: { code: ERROR_CODES.INVALID_INPUT, message: "Type must be either 'blocked' or 'break'." } };
-    }
+    
     return { success: true };
 }
 
