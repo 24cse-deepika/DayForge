@@ -1,5 +1,5 @@
-const { PRIORITY, TASK_STATUSES, POMODORO, SCHEDULE_REASONS, ERROR_CODES, SLOT_TYPES } = require('../../utils/constants');
-const { percentageTimeRemaining, addMinutes, minutesToMilliseconds, minutesBetween } = require('../../utils/timeUtils');
+const { PRIORITY, TASK_STATUSES, SCHEDULE_REASONS, ERROR_CODES, CRITICAL_THRESHOLD_HOURS, URGENCY_THRESHOLD_PERCENT } = require('../../utils/constants');
+const { percentageTimeRemaining, addMinutes, minutesToMilliseconds, minutesBetween, getBreakDuration } = require('../../utils/timeUtils');
 
 function scoreTask(task, currentTime) {
     let urgency = 1 - (percentageTimeRemaining(task.earliestStart, task.deadline, currentTime) / 100);
@@ -7,313 +7,187 @@ function scoreTask(task, currentTime) {
     return (urgency * 0.7) + (normalizedPriority * 0.3);
 }
 
-function findActualEndTime(task, fromTime, slots) {
-    let remainingDuration = task.duration;
-    let currentTime = new Date(fromTime);
-    
-    for (let slot of slots) {
-        if (slot.end <= currentTime) continue;
-        if (slot.type !== SLOT_TYPES.WORK) continue;
-        
-        const slotStart = slot.start < currentTime ? currentTime : slot.start;
-        const slotDuration = minutesBetween(slotStart, slot.end);
-
-        if (task.splittable && slotDuration < task.minSplitDuration) continue;
-        
-        if (slotDuration >= remainingDuration) {
-            return addMinutes(slotStart, remainingDuration);
-        } else {
-            remainingDuration -= slotDuration;
-            currentTime = new Date(slot.end);
-        }
-    }
-    
-    return null;
-}
-
-function getSlotForTask(task, hardSlots, softSlots, useSoft = false) {
-    if (!task.splittable && task.duration > POMODORO.WORK_DURATION) {
-        return softSlots;
-    }
-    if (useSoft) {
-        return softSlots;
-    }
-    return hardSlots;
-}
-
-function feasibilityCheck(candidateTask, readyTasks, currentTime, hardSlots, softSlots) {
-    let usesSoftSlots = !candidateTask.splittable && candidateTask.duration > POMODORO.WORK_DURATION;
-    
-    const slotsToUse = getSlotForTask(candidateTask, hardSlots, softSlots, usesSoftSlots);
-    let candidateEndTime = findActualEndTime(candidateTask, currentTime, slotsToUse);
-
-    if (!candidateEndTime && !usesSoftSlots) {
-        candidateEndTime = findActualEndTime(candidateTask, currentTime, softSlots);
-        if (candidateEndTime) usesSoftSlots = true;
-    }
-
-    if (!candidateEndTime) {
-        return { 
-            feasible: false, 
-            error: { 
-                code: ERROR_CODES.IMPOSSIBLE_TO_SCHEDULE, 
-                message: `${candidateTask.name} cannot fit in any available slot.` 
-            } 
-        };
-    }
-
-    if (candidateEndTime > new Date(candidateTask.deadline)) {
-        if (!usesSoftSlots) {
-            const softEndTime = findActualEndTime(candidateTask, currentTime, softSlots);
-            if (softEndTime && softEndTime <= new Date(candidateTask.deadline)) {
-                candidateEndTime = softEndTime;
-                usesSoftSlots = true;
-            } else {
-                return { 
-                    feasible: false, 
-                    error: { 
-                        code: ERROR_CODES.IMPOSSIBLE_TO_SCHEDULE, 
-                        message: `${candidateTask.name} cannot finish before its deadline even with soft slots.` 
-                    } 
-                };
-            }
-        } else {
-            return { 
-                feasible: false, 
-                error: { 
-                    code: ERROR_CODES.IMPOSSIBLE_TO_SCHEDULE, 
-                    message: `${candidateTask.name} cannot finish before its deadline.` 
-                } 
-            };
-        }
-    }
-
-    for (let task of readyTasks) {
-        if (task.id === candidateTask.id) continue;
-
-        const slotsForThisTask = getSlotForTask(task, hardSlots, softSlots);
-        const taskEndTime = findActualEndTime(task, candidateEndTime, slotsForThisTask);
-        
-        if (!taskEndTime || taskEndTime > new Date(task.deadline)) {
-            if (slotsForThisTask !== softSlots) {
-                const softEndTime = findActualEndTime(task, candidateEndTime, softSlots);
-                if (!softEndTime || softEndTime > new Date(task.deadline)) {
-                    return { 
-                        feasible: false, 
-                        error: { 
-                            code: ERROR_CODES.CAUSES_DEADLINE_MISS,
-                            message: `Scheduling ${candidateTask.name} would cause ${task.name} to miss its deadline.`,
-                            affectedTaskId: task.id,        // ← which task would be affected
-                            affectedTaskName: task.name,
-                            affectedTaskPriority: task.priority  // ← so we can compare priorities
-                        } 
-                    };
-                }
-                usesSoftSlots = true;
-            } else {
-                return { 
-                    feasible: false, 
-                    error: { 
-                        code: ERROR_CODES.CAUSES_DEADLINE_MISS,
-                        message: `Scheduling ${candidateTask.name} would cause ${task.name} to miss its deadline.`,
-                        affectedTaskId: task.id,        // ← which task would be affected
-                        affectedTaskName: task.name,
-                        affectedTaskPriority: task.priority  // ← so we can compare priorities
-                    } 
-                };
-            }
-        }
-    }
-
-    return { 
-        feasible: true, 
-        usesSoftSlots,
-        reason: usesSoftSlots ? SCHEDULE_REASONS.URGENT_DEADLINE : SCHEDULE_REASONS.EARLIEST_DEADLINE 
-    };
-}
-
-// find and return the specific slot to place task in along with chunk size
-// it returns the slot info
 function findSlot(task, fromTime, slotsToUse) {
-    const minChunk = task.splittable 
-        ? (task.minSplitDuration || POMODORO.WORK_DURATION) 
-        : task.duration;
-
     for (let slot of slotsToUse) {
-        if (slot.end <= fromTime) continue;
-        if (slot.type !== SLOT_TYPES.WORK) continue;
+        const effectiveStart = new Date(Math.max(slot.start.getTime(), fromTime.getTime(), task.earliestStart.getTime()));
+        const availableMinutes = minutesBetween(effectiveStart, slot.end);
+        const breakDuration = getBreakDuration(task.duration);
 
-        const slotStart = slot.start < fromTime ? fromTime : slot.start;
-        const slotDuration = minutesBetween(slotStart, slot.end);
-
-        if (slotDuration >= minChunk) {
-            const chunkSize = task.splittable 
-                ? Math.min(task.duration, slotDuration)
-                : task.duration;
-            return { slot, slotStart, chunkSize };
+        if (task.splittable) {
+            const fittedWithBreak = Math.min(task.duration, availableMinutes - breakDuration);
+            if (fittedWithBreak >= task.minSplitDuration) {
+                return {
+                    success: true,
+                    start: effectiveStart,
+                    end: new Date(effectiveStart.getTime() + minutesToMilliseconds(fittedWithBreak + breakDuration)),
+                    isPartial: fittedWithBreak < task.duration,
+                    fittedDuration: fittedWithBreak,
+                    breakGiven: true
+                };
+            }
+            const fittedNoBreak = Math.min(task.duration, availableMinutes);
+            if (fittedNoBreak >= task.minSplitDuration) {
+                return {
+                    success: true,
+                    start: effectiveStart,
+                    end: new Date(effectiveStart.getTime() + minutesToMilliseconds(fittedNoBreak)),
+                    isPartial: fittedNoBreak < task.duration,
+                    fittedDuration: fittedNoBreak,
+                    breakGiven: false
+                };
+            }
+        } else {
+            if (availableMinutes >= task.duration + breakDuration) {
+                return {
+                    success: true,
+                    start: effectiveStart,
+                    end: new Date(effectiveStart.getTime() + minutesToMilliseconds(task.duration + breakDuration)),
+                    isPartial: false,
+                    fittedDuration: task.duration,
+                    breakGiven: true
+                };
+            } else if (availableMinutes >= task.duration) {
+                return {
+                    success: true,
+                    start: effectiveStart,
+                    end: new Date(effectiveStart.getTime() + minutesToMilliseconds(task.duration)),
+                    isPartial: false,
+                    fittedDuration: task.duration,
+                    breakGiven: false
+                };
+            }
         }
     }
-    return null;
+
+    return { success: false };
 }
 
 // place task to the slot and update everything
-function placeTask(task, slotInfo, currentTime) {
-    // updations:
-    task.duration -= slotInfo.chunkSize;
-    task.updated_at = new Date();
+function placeTask(task, slotInfo, reason) {
+   task.duration -= slotInfo.fittedDuration;
+   task.task_status = task.duration === 0 ? TASK_STATUSES.COMPLETED : TASK_STATUSES.SCHEDULED;
+   task.progress = Math.round(((task.originalDuration - task.duration) / task.originalDuration) * 100);
+   task.updated_at = new Date(slotInfo.end);
     task.scheduledSlots.push({
-        start: slotInfo.slotStart,
-        end: addMinutes(slotInfo.slotStart, slotInfo.chunkSize),
-        isPartial: task.duration > 0
-    });
-    task.task_status = task.duration > 0 ? TASK_STATUSES.IN_PROGRESS : TASK_STATUSES.COMPLETED;
-    task.progress = ((task.originalDuration - task.duration) / task.originalDuration) * 100;
-
-    return {
         taskId: task.id,
         taskName: task.name,
-        start: slotInfo.slotStart,
-        end: addMinutes(slotInfo.slotStart, slotInfo.chunkSize),
-        isPartial: task.duration > 0  // true if task still has remaining work
-    }
+        start: slotInfo.start,
+        end: slotInfo.end,
+        isPartial: slotInfo.isPartial,
+        reason: reason
+    });
+   
+    return { success: true, updatedTask: task };
 }
 
+function canFit(task, fromTime, slots) {
+    let remainingDuration = task.duration;
+    let currentTime = new Date(fromTime);
+    const simulatedTask = { ...task, duration: remainingDuration };
+
+    while (remainingDuration > 0) {
+        simulatedTask.duration = remainingDuration;
+        const slotInfo = findSlot(simulatedTask, currentTime, slots);
+        if (!slotInfo.success) return false;
+        if (slotInfo.start >= task.deadline) return false;
+        remainingDuration -= slotInfo.fittedDuration;
+        currentTime = new Date(slotInfo.end);
+    }
+
+    return currentTime <= task.deadline;
+}
+
+function feasibilityCheck(task, fromTime, hardSlots, softSlots) {
+    if (canFit(task, fromTime, hardSlots)) {
+        return { success: true, needsSoftSlots: false };
+    }
+    if (canFit(task, fromTime, softSlots)) {
+        return { success: true, needsSoftSlots: true };
+    }
+    return { success: false, error: { code: ERROR_CODES.IMPOSSIBLE_TO_SCHEDULE, message: "Task cannot be scheduled within its deadline." } };
+}
+
+// after a task is completed, we need to update the ready queue by adding any dependent tasks that are now unblocked  
 function updateReadyQueue(completedTaskId, tasks, adj, completedTaskIds, readyQueue) {
     completedTaskIds.add(completedTaskId);
 
-    if (adj[completedTaskId]) {
-        adj[completedTaskId].forEach(dependentId => {
-            if (completedTaskIds.has(dependentId)) return;
-            const dependentTask = tasks.find(t => t.id === dependentId);
-            if (!dependentTask) return;
-            const allDepsCompleted = dependentTask.dependencies.every(depId => completedTaskIds.has(depId));
-            if (allDepsCompleted) {
-                readyQueue.push(dependentTask);
-            }
-        });
-    }
+    const dependents = adj[completedTaskId] || [];
+    dependents.forEach(dependentId => {
+        const dependentTask = tasks.find(t => t.id === dependentId);
+        if (!dependentTask) return;
+
+        const allDepsCompleted = dependentTask.dependencies.every(depId => completedTaskIds.has(depId));
+        if (allDepsCompleted) {
+            readyQueue.push(dependentTask);
+        }
+    });
 
     return readyQueue;
 }
 
 function runScheduler(tasks, readyQueue, adj, hardSlots, softSlots, fromTime) {
-    const scheduledSlots = [];
-    const atRiskTasks = [];
-    const reasons = {};
+    const scheduledTasks = [];
     const completedTaskIds = new Set();
+    const atRiskTasks = [];
     let currentTime = new Date(fromTime);
+    let lastQueueSize = -1;
 
     while (readyQueue.length > 0) {
-        // rescore and resort every iteration
-        readyQueue.forEach(task => {
-            task._score = scoreTask(task, currentTime);
-        });
-        readyQueue.sort((a, b) => b._score - a._score);
+        // infinite loop guard — if queue size hasn't changed, no progress is being made
+        if (readyQueue.length === lastQueueSize) break;
+        lastQueueSize = readyQueue.length;
 
-        let scheduled = false;
-        const feasibilityErrors = [];
+        // re-score and sort every iteration — urgency changes as currentTime advances
+        readyQueue.sort((a, b) => scoreTask(b, currentTime) - scoreTask(a, currentTime));
+        const taskToSchedule = readyQueue.shift();
 
-        for (let candidateTask of readyQueue) {
-            const feasibility = feasibilityCheck(candidateTask, readyQueue, currentTime, hardSlots, softSlots);
-            
-            if (feasibility.feasible) {
-                const slotsToUse = feasibility.usesSoftSlots ? softSlots : hardSlots;
-                const slotInfo = findSlot(candidateTask, currentTime, slotsToUse);
-                
-                if (slotInfo) {
-                    const placement = placeTask(candidateTask, slotInfo);
-                    scheduledSlots.push(placement);
-                    reasons[candidateTask.id] = feasibility.reason;
-                    currentTime = placement.end;
-                    // advance past any blocked intervals
-                    const nextSlot = hardSlots.find(s => s.type === SLOT_TYPES.WORK && s.start >= currentTime);
-                    if (nextSlot) currentTime = nextSlot.start;
-
-                    if (candidateTask.task_status === TASK_STATUSES.COMPLETED) {
-                        updateReadyQueue(candidateTask.id, tasks, adj, completedTaskIds, readyQueue);
-                        readyQueue.splice(readyQueue.indexOf(candidateTask), 1);
-                    }
-                    // if partial — task stays in readyQueue with updated duration
-
-                    scheduled = true;
-                    break; // restart loop with updated scores
-                }
-            } else {
-                if (feasibility.error.code === ERROR_CODES.CAUSES_DEADLINE_MISS) {
-                    feasibilityErrors.push({
-                        candidateTask,
-                        affectedTaskId: feasibility.error.affectedTaskId,
-                        affectedTaskName: feasibility.error.affectedTaskName,
-                        affectedTaskPriority: feasibility.error.affectedTaskPriority
-                    });
-                } else {
-                    // IMPOSSIBLE_TO_SCHEDULE — mark as at risk immediately
-                    atRiskTasks.push({
-                        taskId: candidateTask.id,
-                        taskName: candidateTask.name,
-                        reason: feasibility.error.message
-                    });
-                    readyQueue.splice(readyQueue.indexOf(candidateTask), 1);
-                }
-            }
+        // feasibility check — filter out impossible tasks upfront
+        const feasibility = feasibilityCheck(taskToSchedule, currentTime, hardSlots, softSlots);
+        if (!feasibility.success) {
+            atRiskTasks.push({
+                taskId: taskToSchedule.id,
+                taskName: taskToSchedule.name,
+                reason: feasibility.error.message
+            });
+            continue;
         }
 
-        // no task was scheduled this iteration
-        if (!scheduled) {
-            // analyze feasibilityErrors — can we trade off lower priority affected task?
-            const tradeoff = feasibilityErrors.find(e => 
-                e.candidateTask.priority > e.affectedTaskPriority
-            );
+        // pick slots based on feasibility result
+        const slotsToUse = feasibility.needsSoftSlots ? softSlots : hardSlots;
+        const slotInfo = findSlot(taskToSchedule, currentTime, slotsToUse);
 
-            if (tradeoff) {
-                // schedule candidate, mark affected as at risk
-                const slotsToUse = hardSlots;
-                const slotInfo = findSlot(tradeoff.candidateTask, currentTime, slotsToUse);
-                if (slotInfo) {
-                    const placement = placeTask(tradeoff.candidateTask, slotInfo);
-                    scheduledSlots.push(placement);
-                    reasons[tradeoff.candidateTask.id] = SCHEDULE_REASONS.HIGHEST_PRIORITY;
-                    currentTime = placement.end;
-                    // advance past any blocked intervals
-                    const nextSlot = hardSlots.find(s => s.type === SLOT_TYPES.WORK && s.start >= currentTime);
-                    if (nextSlot) currentTime = nextSlot.start;
+        // safety net — shouldn't happen if feasibilityCheck is correct
+        if (!slotInfo.success) {
+            atRiskTasks.push({
+                taskId: taskToSchedule.id,
+                taskName: taskToSchedule.name,
+                reason: `Unexpected: no slot found despite passing feasibility check.`
+            });
+            continue;
+        }
 
-                    atRiskTasks.push({
-                        taskId: tradeoff.affectedTaskId,
-                        taskName: tradeoff.affectedTaskName,
-                        reason: `Deprioritized due to higher priority task ${tradeoff.candidateTask.name}`
-                    });
+        // place the task
+        placeTask(taskToSchedule, slotInfo, SCHEDULE_REASONS.EARLIEST_DEADLINE);
+        currentTime = new Date(slotInfo.end);  // advance time
 
-                    if (tradeoff.candidateTask.task_status === TASK_STATUSES.COMPLETED) {
-                        updateReadyQueue(tradeoff.candidateTask.id, tasks, adj, completedTaskIds, readyQueue);
-                        readyQueue.splice(readyQueue.indexOf(tradeoff.candidateTask), 1);
-                    }
-
-                    scheduled = true; // prevents falling through to "truly stuck"
-                }
-            } else {
-                // truly stuck — mark all remaining as at risk
-                readyQueue.forEach(task => {
-                    atRiskTasks.push({
-                        taskId: task.id,
-                        taskName: task.name,
-                        reason: "Could not schedule without causing deadline misses"
-                    });
-                });
-                break; // exit while loop
-            }
+        if (taskToSchedule.task_status === TASK_STATUSES.COMPLETED) {
+            // task fully done — unlock dependents
+            scheduledTasks.push(taskToSchedule);
+            updateReadyQueue(taskToSchedule.id, tasks, adj, completedTaskIds, readyQueue);
+        } else {
+            // task partially placed — push back for another chunk
+            readyQueue.push(taskToSchedule);
+            lastQueueSize = -1;  // reset guard — real progress was made
         }
     }
 
-    return { scheduledSlots, atRiskTasks, reasons };
+    return { success: true, scheduledTasks, atRiskTasks };
 }
-
 
 module.exports = {
     scoreTask,
-    findActualEndTime,
-    getSlotForTask,
     findSlot,
+    placeTask,
     feasibilityCheck,
     updateReadyQueue,
     runScheduler
