@@ -4,6 +4,7 @@ const { minutesBetween } = require('../utils/timeUtils');
 // call after runScheduler with its result + the slot data + fromTime
 function computeMetrics({ scheduledTasks, atRiskTasks }, hardSlots, softSlots, fromTime) {
     const today = new Date(fromTime);
+    today.setHours(0, 0, 0, 0);  // start of day, not current time
     const todayEnd = new Date(today);
     todayEnd.setHours(23, 59, 59, 999);
 
