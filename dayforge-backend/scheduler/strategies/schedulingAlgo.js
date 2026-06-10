@@ -15,8 +15,11 @@ function findSlot(task, fromTime, slotsToUse) {
         if (task.splittable) {
             // First find how much work fits raw (no break yet)
             const maxFit = Math.min(task.duration, availableMinutes);
+            const isLastChunk = task.duration <= task.minSplitDuration;
 
-            if (maxFit >= task.minSplitDuration) {
+            if (maxFit <= 0) continue;
+
+            if (isLastChunk || maxFit >= task.minSplitDuration) {
                 // Now compute break based on what's actually being placed, not full remaining duration
                 const breakDuration = getBreakDuration(maxFit);
                 const fittedWithBreak = availableMinutes - breakDuration;
