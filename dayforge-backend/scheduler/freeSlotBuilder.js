@@ -49,16 +49,16 @@ function expandRecurringBlocks(blockedIntervals, startDate) {
 }
 
 // called by the main function to build free slots based on expanded blocked intervals
-function buildFreeSlots(blockedIntervals, startDate) {
-    const endDate = new Date(startDate.getTime() + SCHEDULING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+function buildFreeSlots(blockedIntervals, startDate, endDate) {
+    const finalEndDate = endDate || new Date(startDate.getTime() + SCHEDULING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const expandedBlocks = expandRecurringBlocks(blockedIntervals, startDate);
 
     // hardSlots — removes BOTH blocked and break intervals (most restrictive)
-    const hardSlots = extractFreeSlots(expandedBlocks, startDate, endDate);
+    const hardSlots = extractFreeSlots(expandedBlocks, startDate, finalEndDate);
 
     // softSlots — removes only BLOCKED intervals, break time becomes available for urgent tasks
     const onlyHardBlocks = expandedBlocks.filter(b => b.type === BLOCK_TYPES.BLOCKED);
-    const softSlots = extractFreeSlots(onlyHardBlocks, startDate, endDate);
+    const softSlots = extractFreeSlots(onlyHardBlocks, startDate, finalEndDate);
 
     return { hardSlots, softSlots };
 }
