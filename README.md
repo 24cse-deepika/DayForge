@@ -1,4 +1,4 @@
-# DayForge 🔥
+# DayForge 
 
 > An intelligent task scheduling engine that automatically builds your weekly plan — respecting deadlines, priorities, dependencies, and your personal time blocks.
 
@@ -78,57 +78,136 @@ If a slot fits the task but not task + break, the task is placed without a break
 
 ```
 DayForge/
-├── index.js                          # Pipeline orchestrator
-├── data/
-│   ├── seedTasks.js                  # Sample tasks for development
-│   └── seedBlockedIntervals.js       # Sample blocked time
-├── models/
-│   ├── task.js                       # Task factory with validation defaults
-│   └── blockedInterval.js            # Blocked interval factory
-├── scheduler/
-│   ├── validator.js                  # Input validation (tasks + intervals)
-│   ├── dependencyResolver.js         # Kahn's algorithm — cycle detection + adjacency map
-│   ├── freeSlotBuilder.js            # Recurring block expansion + hard/soft slot builder
-│   ├── reasonLogger.js               # Developer log + structured reason output for API
-│   └── strategies/
-│       └── schedulingAlgo.js         # Core engine: scoreTask, findSlot, placeTask,
-│                                     #   feasibilityCheck, updateReadyQueue, runScheduler
-├── metrics/
-│   └── index.js                      # Post-schedule metrics: workload, warnings, health
-├── utils/
-│   ├── constants.js                  # TASK_STATUSES, PRIORITY, BREAK_RULES, ERROR_CODES
-│   ├── timeUtils.js                  # Pure time helpers: minutesBetween, getBreakDuration
-│   └── idGenerator.js               # UUID wrapper
-└── tests/
-    ├── validator_test.js             # 13 tests
-    ├── dependencyResolverTest.js     # 8 tests
-    ├── freeSlotBuilderTest.js        # 11 tests
-    ├── schedulingAlgoTest.js         # 22 tests
-    └── runSchedulerTest.js           # 11 tests — 62 total, all passing
+├── index.js                          # Pipeline orchestrator (standalone engine runner)
+├── package.json
+│
+├── dayforge-backend/                 # Express REST API
+│   ├── app.js                        # Express setup — middleware, routes, error handling
+│   ├── index.js                      # Server entry point
+│   ├── .env
+│   │
+│   ├── routes/
+│   │   ├── auth.js                   # POST /auth/register, /login, /logout
+│   │   └── tasks.js                  # GET/POST/PATCH/DELETE /tasks, POST /tasks/schedule
+│   │
+│   ├── controllers/
+│   │   ├── authController.js         # Auth handlers (register, login, logout)
+│   │   └── taskController.js         # Task CRUD + scheduleTask (wires engine to HTTP)
+│   │
+│   ├── scheduler/                    # Core scheduling engine (shared with standalone)
+│   │   ├── validator.js              # Input validation (tasks + intervals)
+│   │   ├── dependencyResolver.js     # Kahn's algorithm — cycle detection + adjacency map
+│   │   ├── freeSlotBuilder.js        # Recurring block expansion + hard/soft slot builder
+│   │   ├── reasonLogger.js           # Developer log + structured reason output
+│   │   └── strategies/
+│   │       └── schedulingAlgo.js     # Core engine: scoreTask, findSlot, placeTask,
+│   │                                 #   feasibilityCheck, updateReadyQueue, runScheduler
+│   │
+│   ├── models/
+│   │   ├── task.js                   # Task factory with validation defaults
+│   │   └── blockedInterval.js        # Blocked interval factory
+│   │
+│   ├── metrics/
+│   │   └── index.js                  # Post-schedule metrics: workload, warnings, health
+│   │
+│   ├── utils/
+│   │   ├── constants.js              # TASK_STATUSES, PRIORITY, BREAK_RULES, ERROR_CODES
+│   │   ├── timeUtils.js              # Pure time helpers: minutesBetween, getBreakDuration
+│   │   └── idGenerator.js            # UUID wrapper
+│   │
+│   └── tests/
+│       ├── validator_test.js         # 13 tests
+│       ├── dependencyResolverTest.js # 8 tests
+│       ├── freeSlotBuilderTest.js    # 11 tests
+│       ├── schedulingAlgoTest.js     # 22 tests
+│       └── runSchedulerTest.js       # 11 tests — 62 total, all passing
+│
+└── docs/
+    ├── ROADMAP.md
+    ├── PROJECT_STATE.md
+    ├── ARCHITECTURE.md
+    ├── DECISIONS.md
+    └── AI_HANDOFF.md
 ```
 
 ---
 
 ## Running the Project
 
+### Standalone Engine
+
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/DayForge.git
+git clone https://github.com/24cse-deepika/DayForge.git
 cd DayForge
 
 # Install dependencies (just uuid)
 npm install
 
-# Run the scheduler
+# Run the scheduler pipeline
 node index.js
 
 # Run all tests
-node --test tests/validator_test.js tests/dependencyResolverTest.js tests/freeSlotBuilderTest.js tests/schedulingAlgoTest.js tests/runSchedulerTest.js
+node --test dayforge-backend/tests/validator_test.js dayforge-backend/tests/dependencyResolverTest.js dayforge-backend/tests/freeSlotBuilderTest.js dayforge-backend/tests/schedulingAlgoTest.js dayforge-backend/tests/runSchedulerTest.js
+```
+
+### Backend API Server
+
+```bash
+cd dayforge-backend
+
+# Install backend dependencies
+npm install
+
+# Start the server (defaults to port 3000)
+node index.js
 ```
 
 ---
 
-## Sample Output
+## API Endpoints
+
+### Auth
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| POST | `/api/auth/register` | Register a new user |
+| POST | `/api/auth/login` | Log in |
+| POST | `/api/auth/logout` | Log out |
+
+### Tasks
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/api/tasks` | Get all tasks |
+| GET | `/api/tasks/:id` | Get task by ID |
+| POST | `/api/tasks` | Create a new task |
+| PATCH | `/api/tasks/:id` | Update a task |
+| DELETE | `/api/tasks/:id` | Delete a task |
+| POST | `/api/tasks/schedule` | Run the scheduling engine |
+
+### Scheduling — Request Body
+
+```json
+{
+  "tasks": [ /* array of task objects */ ],
+  "blockedIntervals": [ /* array of blocked interval objects */ ],
+  "fromTime": "2026-06-10T08:00:00"
+}
+```
+
+### Scheduling — Response
+
+```json
+{
+  "scheduledTasks": [ /* tasks with populated scheduledSlots */ ],
+  "atRiskTasks": [ /* tasks that couldn't be scheduled + reasons */ ]
+}
+```
+
+---
+
+## Sample Output (Standalone Engine)
 
 ```
 ╔══════════════════════════════════════╗
@@ -206,14 +285,15 @@ Every function in the scheduling engine has dedicated tests written alongside th
 
 ## What's Next
 
-The scheduling engine is complete and fully tested. Upcoming phases:
+The scheduling engine is complete and the Express backend foundation is in place. Upcoming phases:
 
-- **Backend** — Node.js + Express REST API wrapping the engine
 - **Database** — PostgreSQL for task persistence, completion tracking, reschedule history
+- **Auth** — bcrypt + JWT for real user accounts
+- **Full CRUD** — connect task routes to the database (currently stubbed)
 - **Frontend** — React UI with a weekly calendar view
 - **DB-dependent metrics** — completion rate, reschedule count, on-time delivery rate
 
-The engine is deliberately decoupled from I/O — it takes plain objects in and returns plain objects out, making it straightforward to plug into any backend without changes.
+The engine is deliberately decoupled from I/O — it takes plain objects in and returns plain objects out. The `scheduleTask` controller already wires it to HTTP; the remaining work is persistence and UI.
 
 ---
 
@@ -221,7 +301,7 @@ The engine is deliberately decoupled from I/O — it takes plain objects in and 
 
 Built by Deepika — a 3rd year CS student who learns by building real things.
 
-Started as a C++ idea, pivoted to JavaScript after reasoning through what actually mattered for this use case. Went through two full redesigns (dropped Pomodoro scheduling, overhauled the slot system) before the engine felt right. The project began with no knowledge of Node.js, Express, or React — the scheduling engine was built first, learning the full stack comes next. Every function was reasoned through before being written. This was built to be understood, not just to work.
+Started as a C++ idea (SmartTasker), pivoted to JavaScript after reasoning through what actually mattered for this use case. Went through two full redesigns (dropped Pomodoro scheduling, overhauled the slot system) before the engine felt right. The project began with no knowledge of Node.js, Express, or React — the scheduling engine was built first, with the full stack being layered on top progressively. Every function was reasoned through before being written. This was built to be understood, not just to work.
 
-**Stack in this phase:** Vanilla JavaScript · Node.js · `uuid` · `node:test`  
-**Coming next:** Express.js · PostgreSQL · React
+**Current stack:** Vanilla JavaScript · Node.js · Express.js · `uuid` · `helmet` · `cors` · `dotenv` · `express-validator` · `node:test`  
+**Coming next:** PostgreSQL · JWT Auth · React
