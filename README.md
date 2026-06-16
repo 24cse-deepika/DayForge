@@ -1,20 +1,22 @@
-# DayForge 
+# DayForge
 
-> An intelligent task scheduling engine that automatically builds your weekly plan — respecting deadlines, priorities, dependencies, and your personal time blocks.
+An intelligent task scheduling engine that builds your weekly plan automatically — respecting deadlines, priorities, dependencies, and your personal time blocks.
 
-DayForge is a scheduling engine built from scratch in vanilla JavaScript, designed for students and professionals who need more than a to-do list. It doesn't just store tasks — it thinks about when and how to fit them into your life.
+**Stack:** Vanilla JavaScript · Node.js · Express.js · express-validator · helmet · cors · uuid · node:test  
+**Tests:** 62 unit tests, all passing  
+**Status:** Engine complete · Backend API complete · Frontend (React) in progress
 
 ---
 
 ## What It Does
 
-You give DayForge your tasks (with deadlines, priorities, durations, and dependencies) and your blocked time (sleep, classes, breaks). It figures out the best schedule for the week — automatically.
+You give DayForge your tasks (deadlines, priorities, durations, dependencies) and your blocked time (sleep, classes, breaks). It produces the optimal schedule for your week — automatically.
 
 - Tasks with tighter deadlines get scheduled first
 - Splittable tasks are broken into sessions that fit available windows
-- Tasks that depend on other tasks wait until their prerequisites are done
-- If your normal time isn't enough, it can use soft-blocked time (naps, breaks) as a fallback
-- Tasks that genuinely can't fit before their deadline are flagged — not silently skipped
+- Dependent tasks wait until their prerequisites complete
+- If hard free time is insufficient, soft-blocked time (breaks, naps) is used as fallback
+- Tasks that genuinely cannot fit before their deadline are flagged with a reason — never silently skipped
 
 ---
 
@@ -22,55 +24,54 @@ You give DayForge your tasks (with deadlines, priorities, durations, and depende
 
 ### Scheduling Strategy: Greedy Hybrid (EDF + Priority Scoring)
 
-Rather than brute-forcing all possible orderings (exponential complexity — impractical for real use), DayForge uses a **greedy hybrid algorithm** that scores each task before every scheduling decision:
+Every scheduling decision scores all ready tasks:
 
 ```
-score = (urgency × 0.7) + (normalizedPriority × 0.3)
-urgency = 1 − (timeRemaining / totalWindow)
+score    = (urgency × 0.7) + (normalizedPriority × 0.3)
+urgency  = 1 − (timeRemaining / totalWindow)
 ```
 
-This deliberately weights deadline urgency over priority — a low-priority task close to its deadline will beat a high-priority task with a week to spare. The 70/30 split was a conscious design choice to prevent deadline misses while still respecting importance.
+Deadline urgency is deliberately weighted over priority — a low-priority task close to its deadline will outrank a high-priority task with a week to spare. The 70/30 split prevents deadline misses while still respecting importance.
 
-**Why greedy over dynamic programming or backtracking?**  
-DP and backtracking would guarantee the globally optimal schedule but at O(n!) or O(2ⁿ) complexity. For a personal scheduler with realistic task counts, greedy runs in milliseconds and produces schedules that are good enough in practice. The urgency-weighted scoring compensates for the lack of global optimality by continuously re-scoring every iteration as time advances.
+Greedy over DP/backtracking: optimal scheduling is O(n!) or O(2ⁿ). For realistic task counts, greedy runs in milliseconds and produces schedules that are good enough in practice. Urgency is recalculated every iteration as `currentTime` advances, compensating for the lack of global optimality.
 
 ### Slot Selection: Best-Fit with Occupied Slot Subtraction
 
-`findSlot` implements a **best-fit approach** — for splittable tasks, it doesn't just check if the minimum chunk fits, it fills as much of the available window as possible (`min(taskDuration, availableMinutes - breakDuration)`). This reduces fragmentation by maximising work done per session.
+`findSlot` uses best-fit — for splittable tasks, it fills as much of the available window as possible (`min(taskDuration, availableMinutes - breakDuration)`), reducing fragmentation by maximising work done per session.
 
-To prevent double-booking, `runScheduler` maintains an `occupiedSlots` array. Before each scheduling decision, placed slots are subtracted from the free slot pool — ensuring two tasks never compete for the same window.
+`runScheduler` maintains an `occupiedSlots` array. Before each scheduling decision, placed slots are subtracted from the free slot pool — ensuring no two tasks compete for the same window.
 
 ### Dependency Resolution: Kahn's Algorithm (Topological Sort)
 
-Task dependencies are resolved using **Kahn's algorithm** — a standard BFS-based topological sort that:
-- Detects cycles (A → B → A) before scheduling begins, failing fast with `CYCLE_DETECTED`
-- Builds an adjacency map so `updateReadyQueue` can unlock dependent tasks the moment their prerequisites complete
+Dependencies are resolved using Kahn's BFS-based topological sort:
+
+- Detects cycles (`A → B → A`) before scheduling begins, failing fast with `CYCLE_DETECTED`
+- Builds an adjacency map so `updateReadyQueue` unlocks dependent tasks the moment prerequisites complete
 - Produces the initial ready queue of tasks with zero unresolved dependencies
 
-### Hard vs Soft Slots
+### Hard vs Soft Blocked Time
 
-Blocked time is split into two tiers:
-- **Hard blocks** (`BLOCKED`) — non-negotiable. Sleep, classes, fixed commitments. The scheduler never touches these.
-- **Soft blocks** (`BREAK`) — compromisable. Naps, walks, personal time. If a task can't fit in hard free time, the scheduler falls back to soft slots before declaring it infeasible.
+| Tier | Type | Behaviour |
+|------|------|-----------|
+| Hard | `BLOCKED` | Non-negotiable. Sleep, classes, fixed commitments. Never touched. |
+| Soft | `BREAK` | Compromisable. Naps, walks, personal time. Used as fallback if hard free time is insufficient. |
 
-`feasibilityCheck` runs a full simulation (without mutating any real task) to verify a task can complete before its deadline — on hard slots first, soft slots second.
+`feasibilityCheck` runs a full simulation (without mutating real task state) to verify a task can complete before its deadline — hard slots first, soft slots second.
 
 ### Anti-Starvation via Urgency Drift
 
-Low-priority tasks with far deadlines could theoretically never get scheduled if high-priority tasks keep arriving. DayForge handles this naturally: urgency is recalculated every iteration using the advancing `currentTime`. As time passes, every task's urgency score rises — eventually a neglected task outscores everything else and gets its turn.
+Low-priority tasks with far deadlines could theoretically never get scheduled if high-priority tasks keep arriving. DayForge handles this naturally: urgency is recalculated every iteration using the advancing `currentTime`. As time passes, every task's urgency score rises — eventually a neglected task outscores everything else and gets scheduled.
 
 ### Break System: Tiered by Session Duration
 
-Rather than enforcing Pomodoro (which couples UI concerns into the scheduling engine), DayForge uses a **tiered break system** based on actual session length:
-
-| Session Duration | Break |
-|-----------------|-------|
-| ≤ 20 min | No break |
+| Session Duration | Break Added |
+|-----------------|-------------|
+| ≤ 20 min | None |
 | 21 – 40 min | 5 min |
 | 41 – 180 min | 15 min |
 | > 180 min | 30 min |
 
-If a slot fits the task but not task + break, the task is placed without a break rather than being skipped. Correctness over perfection.
+If a slot fits the task but not task + break, the task is placed without a break rather than skipped. Correctness over perfection.
 
 ---
 
@@ -81,86 +82,45 @@ DayForge/
 ├── index.js                          # Pipeline orchestrator (standalone engine runner)
 ├── package.json
 │
-├── dayforge-backend/                 # Express REST API
-│   ├── app.js                        # Express setup — middleware, routes, error handling
-│   ├── index.js                      # Server entry point
-│   ├── .env
-│   │
-│   ├── routes/
-│   │   ├── auth.js                   # POST /auth/register, /login, /logout
-│   │   └── tasks.js                  # GET/POST/PATCH/DELETE /tasks, POST /tasks/schedule
-│   │
-│   ├── controllers/
-│   │   ├── authController.js         # Auth handlers (register, login, logout)
-│   │   └── taskController.js         # Task CRUD + scheduleTask (wires engine to HTTP)
-│   │
-│   ├── scheduler/                    # Core scheduling engine (shared with standalone)
-│   │   ├── validator.js              # Input validation (tasks + intervals)
-│   │   ├── dependencyResolver.js     # Kahn's algorithm — cycle detection + adjacency map
-│   │   ├── freeSlotBuilder.js        # Recurring block expansion + hard/soft slot builder
-│   │   ├── reasonLogger.js           # Developer log + structured reason output
-│   │   └── strategies/
-│   │       └── schedulingAlgo.js     # Core engine: scoreTask, findSlot, placeTask,
-│   │                                 #   feasibilityCheck, updateReadyQueue, runScheduler
-│   │
-│   ├── models/
-│   │   ├── task.js                   # Task factory with validation defaults
-│   │   └── blockedInterval.js        # Blocked interval factory
-│   │
-│   ├── metrics/
-│   │   └── index.js                  # Post-schedule metrics: workload, warnings, health
-│   │
-│   ├── utils/
-│   │   ├── constants.js              # TASK_STATUSES, PRIORITY, BREAK_RULES, ERROR_CODES
-│   │   ├── timeUtils.js              # Pure time helpers: minutesBetween, getBreakDuration
-│   │   └── idGenerator.js            # UUID wrapper
-│   │
-│   └── tests/
-│       ├── validator_test.js         # 13 tests
-│       ├── dependencyResolverTest.js # 8 tests
-│       ├── freeSlotBuilderTest.js    # 11 tests
-│       ├── schedulingAlgoTest.js     # 22 tests
-│       └── runSchedulerTest.js       # 11 tests — 62 total, all passing
-│
-└── docs/
-    ├── ROADMAP.md
-    ├── PROJECT_STATE.md
-    ├── ARCHITECTURE.md
-    ├── DECISIONS.md
-    └── AI_HANDOFF.md
-```
-
----
-
-## Running the Project
-
-### Standalone Engine
-
-```bash
-# Clone the repo
-git clone https://github.com/24cse-deepika/DayForge.git
-cd DayForge
-
-# Install dependencies (just uuid)
-npm install
-
-# Run the scheduler pipeline
-node index.js
-
-# Run all tests
-node --test dayforge-backend/tests/validator_test.js dayforge-backend/tests/dependencyResolverTest.js dayforge-backend/tests/freeSlotBuilderTest.js dayforge-backend/tests/schedulingAlgoTest.js dayforge-backend/tests/runSchedulerTest.js
-```
-
-### Backend API Server
-
-```bash
-cd dayforge-backend
-
-# Install backend dependencies
-npm install
-
-# Start the server (defaults to port 3000)
-node index.js
+└── dayforge-backend/                 # Express REST API
+    ├── app.js                        # Express setup — middleware, routes, error handling
+    ├── index.js                      # Server entry point
+    │
+    ├── routes/
+    │   ├── auth.js                   # POST /auth/register, /login, /logout
+    │   └── tasks.js                  # GET/POST/PATCH/DELETE /tasks, POST /tasks/schedule
+    │
+    ├── controllers/
+    │   ├── authController.js         # Auth handlers
+    │   └── taskController.js         # Task CRUD + scheduleTask (wires engine to HTTP)
+    │
+    ├── scheduler/                    # Core scheduling engine
+    │   ├── validator.js
+    │   ├── dependencyResolver.js     # Kahn's algorithm
+    │   ├── freeSlotBuilder.js        # Hard/soft slot builder
+    │   ├── reasonLogger.js
+    │   └── strategies/
+    │       └── schedulingAlgo.js     # scoreTask, findSlot, placeTask,
+    │                                 # feasibilityCheck, updateReadyQueue, runScheduler
+    │
+    ├── models/
+    │   ├── task.js
+    │   └── blockedInterval.js
+    │
+    ├── metrics/
+    │   └── index.js                  # Post-schedule metrics: workload, warnings, health
+    │
+    ├── utils/
+    │   ├── constants.js              # TASK_STATUSES, PRIORITY, BREAK_RULES, ERROR_CODES
+    │   ├── timeUtils.js
+    │   └── idGenerator.js
+    │
+    └── tests/
+        ├── validator_test.js         # 13 tests
+        ├── dependencyResolverTest.js # 8 tests
+        ├── freeSlotBuilderTest.js    # 11 tests
+        ├── schedulingAlgoTest.js     # 22 tests
+        └── runSchedulerTest.js       # 11 tests — 62 total, all passing
 ```
 
 ---
@@ -186,22 +146,40 @@ node index.js
 | DELETE | `/api/tasks/:id` | Delete a task |
 | POST | `/api/tasks/schedule` | Run the scheduling engine |
 
-### Scheduling — Request Body
+### Schedule Request Body
 
 ```json
 {
-  "tasks": [ /* array of task objects */ ],
-  "blockedIntervals": [ /* array of blocked interval objects */ ],
+  "tasks": [],
+  "blockedIntervals": [],
   "fromTime": "2026-06-10T08:00:00"
 }
 ```
 
-### Scheduling — Response
+### Schedule Response
 
 ```json
 {
-  "scheduledTasks": [ /* tasks with populated scheduledSlots */ ],
-  "atRiskTasks": [ /* tasks that couldn't be scheduled + reasons */ ]
+  "scheduledTasks": [],
+  "atRiskTasks": []
+}
+```
+
+---
+
+## Task Input Schema
+
+```json
+{
+  "name": "OS Exam Prep",
+  "durationMinutes": 600,
+  "deadline": "2026-06-12T09:00",
+  "priority": 5,
+  "splittable": true,
+  "minSplitDuration": 60,
+  "earliestStart": "2026-06-07",
+  "dependencies": ["task-uuid"],
+  "category": "exam"
 }
 ```
 
@@ -240,9 +218,7 @@ node index.js
 
 ---
 
-## Metrics
-
-After every scheduling run, DayForge computes:
+## Post-Schedule Metrics
 
 | Metric | Description |
 |--------|-------------|
@@ -250,58 +226,60 @@ After every scheduling run, DayForge computes:
 | Hours today / this week | Total work time placed on the calendar |
 | Free time today | Remaining hard free slots today |
 | Deadline misses | Tasks scheduled but ending after their deadline |
-| Soft slot usage | Tasks that required rest/break time to fit |
+| Soft slot usage | Tasks that required break time to fit |
 | Split tasks | Tasks broken across multiple sessions |
 | Avg urgency score | Overall schedule pressure (0 = relaxed, 1 = critical) |
 | At-risk tasks | Tasks impossible to schedule + reason why |
 
 ---
 
-## Task Input Schema
+## Test Coverage
 
-```js
-{
-  name: "OS Exam Prep",
-  durationMinutes: 600,          // estimated work time
-  deadline: "2026-06-12T09:00", // hard deadline
-  priority: 5,                   // 1 (low) → 5 (critical)
-  splittable: true,              // can be broken into sessions?
-  minSplitDuration: 60,          // minimum viable session (minutes)
-  earliestStart: "2026-06-07",  // don't schedule before this date
-  dependencies: ["task-uuid"],   // IDs of tasks that must complete first
-  category: "exam"
-}
+62 unit tests across 5 files using Node's built-in `node:test` — no external framework required.
+
+Every module in the scheduling engine has dedicated tests written alongside the implementation. Coverage includes: normal scheduling cases, empty inputs, past deadlines, impossible tasks, dependency chains, cycles, slots that fit work but not work + break, splittable tasks smaller than `minSplitDuration`, and tasks with future `earliestStart`.
+
+---
+
+## Running the Project
+
+### Standalone Engine
+
+```bash
+git clone https://github.com/24cse-deepika/DayForge.git
+cd DayForge
+npm install
+node index.js
+```
+
+### Run All Tests
+
+```bash
+node --test dayforge-backend/tests/validator_test.js \
+             dayforge-backend/tests/dependencyResolverTest.js \
+             dayforge-backend/tests/freeSlotBuilderTest.js \
+             dayforge-backend/tests/schedulingAlgoTest.js \
+             dayforge-backend/tests/runSchedulerTest.js
+```
+
+### Backend API Server
+
+```bash
+cd dayforge-backend
+npm install
+node index.js
+# Server starts on port 3000
 ```
 
 ---
 
-## About the Tests
+## Roadmap
 
-62 unit tests across 5 files using Node's built-in `node:test` — no external test framework required.
-
-Every function in the scheduling engine has dedicated tests written alongside the implementation. Tests cover normal cases, edge cases (empty inputs, past deadlines, impossible tasks, dependency chains), and known failure modes (slots that fit work but not work + break, splittable tasks smaller than `minSplitDuration`, tasks with future `earliestStart`).
-
----
-
-## What's Next
-
-The scheduling engine is complete and the Express backend foundation is in place. Upcoming phases:
-
-- **Database** — PostgreSQL for task persistence, completion tracking, reschedule history
-- **Auth** — bcrypt + JWT for real user accounts
-- **Full CRUD** — connect task routes to the database (currently stubbed)
-- **Frontend** — React UI with a weekly calendar view
-- **DB-dependent metrics** — completion rate, reschedule count, on-time delivery rate
-
-The engine is deliberately decoupled from I/O — it takes plain objects in and returns plain objects out. The `scheduleTask` controller already wires it to HTTP; the remaining work is persistence and UI.
-
----
-
-## About
-
-Built by Deepika — a 3rd year CS student who learns by building real things.
-
-Started as a C++ idea (SmartTasker), pivoted to JavaScript after reasoning through what actually mattered for this use case. Went through two full redesigns (dropped Pomodoro scheduling, overhauled the slot system) before the engine felt right. The project began with no knowledge of Node.js, Express, or React — the scheduling engine was built first, with the full stack being layered on top progressively. Every function was reasoned through before being written. This was built to be understood, not just to work.
-
-**Current stack:** Vanilla JavaScript · Node.js · Express.js · `uuid` · `helmet` · `cors` · `dotenv` · `express-validator` · `node:test`  
-**Coming next:** PostgreSQL · JWT Auth · React
+- [x] Scheduling engine (greedy hybrid, dependency resolution, hard/soft slots)
+- [x] Express REST API (auth + task routes, input validation, error handling)
+- [x] 62 unit tests, all passing
+- [ ] PostgreSQL — task persistence, completion tracking, reschedule history
+- [ ] JWT auth — bcrypt password hashing, token-based sessions
+- [ ] Full CRUD connected to database (currently stubbed)
+- [ ] React frontend — weekly calendar view, drag-and-drop rescheduling
+- [ ] DB-dependent metrics — completion rate, on-time delivery rate
