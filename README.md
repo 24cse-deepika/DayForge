@@ -4,7 +4,7 @@ An intelligent task scheduling engine that builds your weekly plan automatically
 
 **Stack:** Vanilla JavaScript · Node.js · Express.js · express-validator · helmet · cors · uuid · node:test  
 **Tests:** 62 unit tests, all passing  
-**Status:** Engine complete · Backend API complete · Frontend (React) in progress
+**Status:** Engine complete · Backend API complete · Frontend in progress
 
 ---
 
@@ -281,5 +281,5 @@ node index.js
 - [ ] PostgreSQL — task persistence, completion tracking, reschedule history
 - [ ] JWT auth — bcrypt password hashing, token-based sessions
 - [ ] Full CRUD connected to database (currently stubbed)
-- [ ] React frontend — weekly calendar view, drag-and-drop rescheduling
+- [ ] HTML, CSS, EJS frontend 
 - [ ] DB-dependent metrics — completion rate, on-time delivery rate
