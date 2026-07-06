@@ -1,16 +1,10 @@
 const { validateBlockedInterval } = require('../scheduler/validator');
 const blockedIntervalRepository = require('../repositories/blockedIntervalRepository');
 
-// TODO(auth): same placeholder as taskController.js - replace with
-// req.user.id once login exists. Not something to ship as-is.
-function getUserId(req) {
-  return req.body?.userId || req.query.userId;
-}
-
 async function getAllBlockedIntervals(req, res, next) {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+    const userId = req.user.id;
+    // if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
     const blockedIntervals = await blockedIntervalRepository.getAllBlockedIntervalsForUser(userId);
     res.json({ blockedIntervals });
   } catch (error) {
@@ -20,8 +14,8 @@ async function getAllBlockedIntervals(req, res, next) {
 
 async function getBlockedIntervalFromId(req, res, next) {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+    const userId = req.user.id;
+    // if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
     const blockedInterval = await blockedIntervalRepository.getBlockedIntervalById(req.params.id, userId);
     if (!blockedInterval) return res.status(404).json({ error: 'Blocked interval not found' });
     res.json({ blockedInterval });
@@ -32,8 +26,8 @@ async function getBlockedIntervalFromId(req, res, next) {
 
 async function createNewBlockedInterval(req, res, next) {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+    const userId = req.user.id;
+    // if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
 
     const { success, error } = validateBlockedInterval(req.body);
     if (!success) {
@@ -49,8 +43,8 @@ async function createNewBlockedInterval(req, res, next) {
 
 async function updateBlockedIntervalById(req, res, next) {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+    const userId = req.user.id;
+    // if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
 
     const blockedInterval = await blockedIntervalRepository.updateBlockedInterval(req.params.id, userId, req.body);
     if (!blockedInterval) return res.status(404).json({ error: 'Blocked interval not found' });
@@ -62,8 +56,8 @@ async function updateBlockedIntervalById(req, res, next) {
 
 async function deleteBlockedIntervalById(req, res, next) {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+    const userId = req.user.id;
+    // if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
 
     const deleted = await blockedIntervalRepository.deleteBlockedInterval(req.params.id, userId);
     if (!deleted) return res.status(404).json({ error: 'Blocked interval not found' });

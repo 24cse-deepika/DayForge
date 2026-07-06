@@ -6,22 +6,9 @@ const {resolveDependencies} = require('../scheduler/dependencyResolver')
 const {buildFreeSlots} = require('../scheduler/freeSlotBuilder')
 const taskRepository = require('../repositories/taskRepository')
 
-// TODO(auth): once login is wired up, replace every `getUserId(req)` call
-// below with `req.user.id` set by the auth middleware. Pulling it from the
-// body/query for now is ONLY so the DB layer is testable via Postman before
-// auth exists - it is not something to ship.
-function getUserId(req) {
-  // req.body is undefined on requests with no JSON body (GET/DELETE with no
-  // payload) since express.json() only sets it when it actually parses
-  // something - so req.body?.userId, not req.body.userId.
-  return req.body?.userId || req.query.userId;
-}
-
-async function getAllTasks(req, res) {
+async function getAllTasks(req, res, next) {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
-    const tasks = await taskRepository.getAllTasksForUser(userId);
+    const tasks = await taskRepository.getAllTasksForUser(req.user.id);
     res.json({ tasks });
   } catch (error) {
     next(error);
@@ -73,8 +60,7 @@ function scheduleTask(req, res) {
 
 async function getTaskFromId(req, res, next) {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+    const userId = req.user.id;
     const task = await taskRepository.getTaskById(req.params.id, userId);
     if (!task) return res.status(404).json({ error: 'Task not found' });
     res.json({ task });
@@ -85,8 +71,7 @@ async function getTaskFromId(req, res, next) {
 
 async function createNewTask(req, res, next) {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+    const userId = req.user.id;
 
     const { success, error } = validateTask(req.body);
     if (!success) {
@@ -102,8 +87,7 @@ async function createNewTask(req, res, next) {
 
 async function updateTaskById(req, res, next) {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+    const userId = req.user.id;
 
     const task = await taskRepository.updateTask(req.params.id, userId, req.body);
     if (!task) return res.status(404).json({ error: 'Task not found' });
@@ -115,8 +99,7 @@ async function updateTaskById(req, res, next) {
 
 async function deleteTaskById(req, res, next) {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+    const userId = req.user.id;
 
     const deleted = await taskRepository.deleteTask(req.params.id, userId);
     if (!deleted) return res.status(404).json({ error: 'Task not found' });
