@@ -1,13 +1,28 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 const pool = require('./db/pool');
+require('./config/passport'); // registers the Google strategy (side-effect import)
 
 const app = express();
 
 app.use(helmet());
-app.use(cors());
+
+// credentials: true is required so the browser will send/receive the
+// "token" cookie on cross-origin requests. Wildcard origin ('*') is NOT
+// allowed by browsers when credentials are involved, so this must be an
+// explicit origin (your frontend's actual URL).
+app.use(cors({
+  origin: process.env.CLIENT_ORIGIN || 'http://localhost:3000',
+  credentials: true,
+}));
+
 app.use(express.json());
+app.use(cookieParser());
+
+const passport = require('passport');
+app.use(passport.initialize()); // no passport.session() — we use our own JWT, not server sessions
 
 // Import routes
 const authRoutes = require('./routes/auth');
