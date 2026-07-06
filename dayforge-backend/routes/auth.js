@@ -4,13 +4,23 @@ const router = express.Router();
 const {
     register,
     login,
-    logout
+    logout,
+    googleLogin,
+    googleCallback,
+    getCurrentUser
 } = require('../controllers/authController');
 
-router.post('/register', register);
+const { authenticate } = require("../middleware/authMiddleware");
+ 
+const router = express.Router();
+ 
+router.post("/register", register);
+router.post("/login", login);
 
-router.post('/login', login);
-
-router.post('/logout', logout);
-
+router.get("/google", googleLogin);
+router.get("/google/callback", googleCallback);
+ 
+router.post("/logout", logout);
+router.get("/me", authenticate, getCurrentUser);
+ 
 module.exports = router;
