@@ -4,10 +4,28 @@ const {createTask} = require('../models/task')
 const {createBlockedInterval} = require('../models/blockedInterval')
 const {resolveDependencies} = require('../scheduler/dependencyResolver')
 const {buildFreeSlots} = require('../scheduler/freeSlotBuilder')
+const taskRepository = require('../repositories/taskRepository')
 
-function getAllTasks(req, res) {
-  // Logic to get all tasks for the logged-in user
-  res.json({ message: 'Get all tasks' });
+// TODO(auth): once login is wired up, replace every `getUserId(req)` call
+// below with `req.user.id` set by the auth middleware. Pulling it from the
+// body/query for now is ONLY so the DB layer is testable via Postman before
+// auth exists - it is not something to ship.
+function getUserId(req) {
+  // req.body is undefined on requests with no JSON body (GET/DELETE with no
+  // payload) since express.json() only sets it when it actually parses
+  // something - so req.body?.userId, not req.body.userId.
+  return req.body?.userId || req.query.userId;
+}
+
+async function getAllTasks(req, res) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+    const tasks = await taskRepository.getAllTasksForUser(userId);
+    res.json({ tasks });
+  } catch (error) {
+    next(error);
+  }
 }
 
 function scheduleTask(req, res) {
@@ -53,24 +71,59 @@ function scheduleTask(req, res) {
   }
 }
 
-function getTaskFromId(req, res) {
-    // Logic to get a task by ID
-    res.json({ message: `Get task with id ${req.params.id}` });
+async function getTaskFromId(req, res, next) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+    const task = await taskRepository.getTaskById(req.params.id, userId);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    res.json({ task });
+  } catch (error) {
+    next(error);
+  }
 }
 
-function createNewTask(req, res) {
-  // Logic to create a new task
-  res.json({ message: 'Create new task' });
+async function createNewTask(req, res, next) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+
+    const { success, error } = validateTask(req.body);
+    if (!success) {
+      return res.status(400).json({ error: `Task validation failed - ${error.message || JSON.stringify(error)}` });
+    }
+
+    const task = await taskRepository.createTaskRecord({ ...req.body, userId });
+    res.status(201).json({ task });
+  } catch (error) {
+    next(error);
+  }
 }
 
-function updateTaskById(req, res) {
-  // Logic to update a task by ID
-  res.json({ message: `Update task with id ${req.params.id}` });
+async function updateTaskById(req, res, next) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+
+    const task = await taskRepository.updateTask(req.params.id, userId, req.body);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    res.json({ task });
+  } catch (error) {
+    next(error);
+  }
 }
 
-function deleteTaskById(req, res) {
-  // Logic to delete a task by ID
-  res.json({ message: `Delete task with id ${req.params.id}` });
+async function deleteTaskById(req, res, next) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(400).json({ error: 'userId is required (temporary, until auth is added)' });
+
+    const deleted = await taskRepository.deleteTask(req.params.id, userId);
+    if (!deleted) return res.status(404).json({ error: 'Task not found' });
+    res.json({ message: `Task ${req.params.id} deleted` });
+  } catch (error) {
+    next(error);
+  }
 }
 
 module.exports = {
