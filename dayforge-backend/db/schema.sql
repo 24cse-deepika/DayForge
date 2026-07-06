@@ -13,8 +13,12 @@
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   email VARCHAR(255) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
+  password_hash VARCHAR(255),
+  google_id VARCHAR(255) UNIQUE,
+  auth_provider VARCHAR(20) NOT NULL DEFAULT 'local',
+  created_at TIMESTAMP DEFAULT NOW(),
+
+  CONSTRAINT check_auth_provider CHECK (auth_provider IN ('local', 'google'))
 );
  
 CREATE TABLE IF NOT EXISTS tasks (
