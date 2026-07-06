@@ -1,15 +1,15 @@
-const { rawTasks }           = require('./data/seedTasks');
-const { rawBlockedIntervals } = require('./data/seedBlockedIntervals');
+const { rawTasks }           = require('./dayforge-backend/data/seedTasks');
+const { rawBlockedIntervals } = require('./dayforge-backend/data/seedBlockedIntervals');
 
-const { createTask }           = require('./models/task');
-const { createBlockedInterval } = require('./models/blockedInterval');
+const { createTask }           = require('./dayforge-backend/models/task');
+const { createBlockedInterval } = require('./dayforge-backend/models/blockedInterval');
 
-const { validateTask, validateBlockedInterval } = require('./scheduler/validator');
-const { resolveDependencies }                   = require('./scheduler/dependencyResolver');
-const { buildFreeSlots }                        = require('./scheduler/freeSlotBuilder');
-const { runScheduler }                          = require('./scheduler/strategies/schedulingAlgo');
-const { logScheduleResult, buildReasonLog }     = require('./scheduler/reasonLogger');
-const { computeMetrics }                        = require('./metrics/index');
+const { validateTask, validateBlockedInterval } = require('./dayforge-backend/scheduler/validator');
+const { resolveDependencies }                   = require('./dayforge-backend/scheduler/dependencyResolver');
+const { buildFreeSlots }                        = require('./dayforge-backend/scheduler/freeSlotBuilder');
+const { runScheduler }                          = require('./dayforge-backend/scheduler/strategies/schedulingAlgo');
+const { logScheduleResult, buildReasonLog }     = require('./dayforge-backend/scheduler/reasonLogger');
+const { computeMetrics }                        = require('./dayforge-backend/metrics/index');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
