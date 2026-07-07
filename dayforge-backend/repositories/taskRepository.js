@@ -100,7 +100,7 @@ async function updateTask(id, userId, fields) {
   for (const [key, column] of Object.entries(UPDATABLE_FIELDS)) {
     if (fields[key] !== undefined) {
       setClauses.push(`${column} = $${i}`);
-      values.push(fields[key]);
+      values.push(key === 'scheduledSlots' ? JSON.stringify(fields[key]) : fields[key]);
       i++;
     }
   }

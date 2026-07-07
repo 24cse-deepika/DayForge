@@ -5,6 +5,7 @@ const {createBlockedInterval} = require('../models/blockedInterval')
 const {resolveDependencies} = require('../scheduler/dependencyResolver')
 const {buildFreeSlots} = require('../scheduler/freeSlotBuilder')
 const taskRepository = require('../repositories/taskRepository')
+const blockedIntervalRepository = require('../repositories/blockedIntervalRepository')
 
 async function getAllTasks(req, res, next) {
   try {
@@ -15,46 +16,56 @@ async function getAllTasks(req, res, next) {
   }
 }
 
-function scheduleTask(req, res) {
-  const { tasks, blockedIntervals } = req.body;
-  const fromTime = new Date(req.body.fromTime);
-
+async function scheduleTask(req, res, next) {
   try {
-    // 1. Validate input
-    for (const raw of tasks) {
-      const { success, error } = validateTask(raw);
-      if (!success) throw new Error(`Task validation failed: "${raw.name}" - ${error.message || JSON.stringify(error)}`);
-    }
-    for (const raw of blockedIntervals) {
-      const { success, error } = validateBlockedInterval(raw);
-      if (!success) throw new Error(`Blocked interval validation failed: "${raw.label}" - ${error.message || JSON.stringify(error)}`);
-    }
+    const userId = req.user.id;
+    const fromTime = new Date(req.body.fromTime);
 
-    // 2. Build runtime objects
-    const taskObjects = tasks.map(createTask);
-    const blockedIntervalObjects = blockedIntervals.map(createBlockedInterval);
+    const tasks = await taskRepository.getAllTasksForUser(userId);
+    const blockedIntervals = await blockedIntervalRepository.getAllBlockedIntervalsForUser(userId);
 
-    // 3. Resolve dependencies
+    const taskObjects = tasks.map(t => ({
+      ...t,
+      task_status: t.taskStatus,
+    }));
+    const blockedIntervalObjects = blockedIntervals;
+
     const depResult = resolveDependencies(taskObjects);
     if (!depResult.success) throw new Error(`Dependency resolution failed - ${depResult.error.message || JSON.stringify(depResult.error)}`);
     const { readyQueue, adj } = depResult;
 
-    // 4. Build free slots
     const furthestDeadline = new Date(Math.max(...taskObjects.map(t => t.deadline.getTime())));
     const { hardSlots, softSlots } = buildFreeSlots(blockedIntervalObjects, fromTime, furthestDeadline);
 
-    // 5. Run scheduler
     const scheduleResult = runScheduler(taskObjects, readyQueue, adj, hardSlots, softSlots, fromTime);
 
-    console.log('scheduleResult:', JSON.stringify(scheduleResult, null, 2));
+    // Persist the engine's output — scheduledSlots and the post-scheduling
+    // status/duration — back to Postgres so a page refresh doesn't lose it.
+    const allTasks = [...scheduleResult.scheduledTasks, ...scheduleResult.atRiskTasks];
+    await Promise.all(
+      allTasks.map(t =>
+        taskRepository.updateTask(t.id, userId, {
+          taskStatus: t.task_status,
+          duration: t.duration,
+          scheduledSlots: t.scheduledSlots,
+          progress: t.progress,
+        })
+      )
+    );
+
+    // Strip the stale pre-scheduling `taskStatus` copy before responding —
+    // `task_status` (set by the engine) is the only one worth trusting.
+    const clean = (t) => {
+      const { taskStatus, ...rest } = t;
+      return rest;
+    };
 
     return res.json({
-      scheduledTasks: scheduleResult.scheduledTasks,
-      atRiskTasks: scheduleResult.atRiskTasks
+      scheduledTasks: scheduleResult.scheduledTasks.map(clean),
+      atRiskTasks: scheduleResult.atRiskTasks.map(clean)
     });
-
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    next(error);
   }
 }
 
