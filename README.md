@@ -2,21 +2,22 @@
 
 An intelligent task scheduling engine that builds your weekly plan automatically — respecting deadlines, priorities, dependencies, and your personal time blocks.
 
-**Stack:** Vanilla JavaScript · Node.js · Express.js · express-validator · helmet · cors · uuid · node:test  
-**Tests:** 62 unit tests, all passing  
-**Status:** Engine complete · Backend API complete · Frontend in progress
+**Stack:** Node.js · Express.js · PostgreSQL (raw `pg`) · JWT · bcrypt · Passport (Google OAuth) · helmet · cors · express-validator · node:test
+**Tests:** 74 tests across 7 files, all passing
+**Status:** Engine complete · Auth complete (local + Google OAuth) · PostgreSQL persistence complete · Frontend in progress
 
 ---
 
 ## What It Does
 
-You give DayForge your tasks (deadlines, priorities, durations, dependencies) and your blocked time (sleep, classes, breaks). It produces the optimal schedule for your week — automatically.
+You give DayForge your tasks (deadlines, priorities, durations, dependencies) and your blocked time (sleep, classes, breaks). It produces the optimal schedule for your week — automatically, persisted to your account, recomputed on demand.
 
 - Tasks with tighter deadlines get scheduled first
 - Splittable tasks are broken into sessions that fit available windows
 - Dependent tasks wait until their prerequisites complete
 - If hard free time is insufficient, soft-blocked time (breaks, naps) is used as fallback
 - Tasks that genuinely cannot fit before their deadline are flagged with a reason — never silently skipped
+- Every user's tasks, blocked intervals, and generated schedules persist across sessions
 
 ---
 
@@ -75,52 +76,82 @@ If a slot fits the task but not task + break, the task is placed without a break
 
 ---
 
+## Authentication
+
+- **Local auth**: email/password, bcrypt-hashed (10 salt rounds)
+- **Google OAuth**: via Passport, no server-side sessions — the OAuth handshake issues a signed JWT, same as local login
+- **Sessions**: JWT stored in an httpOnly cookie (7-day expiry), verified on every protected request by `authenticate` middleware
+- Every task and blocked interval is scoped to the authenticated user (`user_id` foreign key, enforced at the query level — one user can never read or modify another's data)
+
+---
+
 ## Project Structure
 
 ```
 DayForge/
-├── index.js                          # Pipeline orchestrator (standalone engine runner)
 ├── package.json
 │
 └── dayforge-backend/                 # Express REST API
     ├── app.js                        # Express setup — middleware, routes, error handling
     ├── index.js                      # Server entry point
     │
+    ├── config/
+    │   └── passport.js                # Google OAuth strategy
+    │
+    ├── db/
+    │   ├── pool.js                    # Postgres connection pool
+    │   ├── schema.sql                 # Full schema — users, tasks, blocked_intervals
+    │   └── testConnection.js          # Manual DB connectivity check
+    │
     ├── routes/
-    │   ├── auth.js                   # POST /auth/register, /login, /logout
-    │   └── tasks.js                  # GET/POST/PATCH/DELETE /tasks, POST /tasks/schedule
+    │   ├── auth.js                    # /register, /login, /logout, /google, /google/callback, /me
+    │   ├── tasks.js                   # Task CRUD + /schedule, all behind auth middleware
+    │   └── blockedIntervals.js        # Blocked interval CRUD, behind auth middleware
     │
     ├── controllers/
-    │   ├── authController.js         # Auth handlers
-    │   └── taskController.js         # Task CRUD + scheduleTask (wires engine to HTTP)
+    │   ├── authController.js          # Auth handlers — register, login, Google callback, logout
+    │   ├── taskController.js          # Task CRUD + scheduleTask (DB-backed)
+    │   └── blockedIntervalController.js
     │
-    ├── scheduler/                    # Core scheduling engine
+    ├── middleware/
+    │   └── authMiddleware.js          # authenticate (JSON 401) / authenticatePage (redirect)
+    │
+    ├── repositories/                  # Raw SQL, one file per table
+    │   ├── userRepository.js
+    │   ├── taskRepository.js          # Handles camelCase ↔ snake_case column mapping
+    │   └── blockedIntervalRepository.js
+    │
+    ├── scheduler/                     # Core scheduling engine — pure, no DB/HTTP dependency
     │   ├── validator.js
-    │   ├── dependencyResolver.js     # Kahn's algorithm
-    │   ├── freeSlotBuilder.js        # Hard/soft slot builder
+    │   ├── dependencyResolver.js      # Kahn's algorithm
+    │   ├── freeSlotBuilder.js         # Hard/soft slot builder
     │   ├── reasonLogger.js
     │   └── strategies/
-    │       └── schedulingAlgo.js     # scoreTask, findSlot, placeTask,
-    │                                 # feasibilityCheck, updateReadyQueue, runScheduler
+    │       └── schedulingAlgo.js      # scoreTask, findSlot, placeTask,
+    │                                  # feasibilityCheck, updateReadyQueue, runScheduler
     │
     ├── models/
     │   ├── task.js
     │   └── blockedInterval.js
     │
     ├── metrics/
-    │   └── index.js                  # Post-schedule metrics: workload, warnings, health
+    │   └── index.js                   # Post-schedule metrics: workload, warnings, health
     │
     ├── utils/
-    │   ├── constants.js              # TASK_STATUSES, PRIORITY, BREAK_RULES, ERROR_CODES
+    │   ├── constants.js               # TASK_STATUSES, PRIORITY, BREAK_RULES, ERROR_CODES
     │   ├── timeUtils.js
-    │   └── idGenerator.js
+    │   ├── idGenerator.js
+    │   └── jwt.js                     # generateToken / verifyToken
     │
     └── tests/
-        ├── validator_test.js         # 13 tests
-        ├── dependencyResolverTest.js # 8 tests
-        ├── freeSlotBuilderTest.js    # 11 tests
-        ├── schedulingAlgoTest.js     # 22 tests
-        └── runSchedulerTest.js       # 11 tests — 62 total, all passing
+        ├── validator_test.js           # 13 tests
+        ├── dependencyResolverTest.js    # 8 tests
+        ├── freeSlotBuilderTest.js       # 11 tests
+        ├── schedulingAlgoTest.js        # 22 tests
+        ├── runSchedulerTest.js          # 11 tests
+        ├── taskRepositoryTest.js        # 6 tests — real Postgres integration tests
+        └── blockedIntervalRepositoryTest.js  # 6 tests — real Postgres integration tests
+                                          # 74 total, all passing
 ```
 
 ---
@@ -131,30 +162,43 @@ DayForge/
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| POST | `/api/auth/register` | Register a new user |
-| POST | `/api/auth/login` | Log in |
-| POST | `/api/auth/logout` | Log out |
+| POST | `/api/auth/register` | Register with email/password |
+| POST | `/api/auth/login` | Log in, sets JWT cookie |
+| GET | `/api/auth/google` | Start Google OAuth flow |
+| GET | `/api/auth/google/callback` | Google OAuth callback, sets JWT cookie |
+| POST | `/api/auth/logout` | Clear session cookie |
+| GET | `/api/auth/me` | Get current authenticated user *(protected)* |
 
-### Tasks
+### Tasks — all routes below require authentication
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| GET | `/api/tasks` | Get all tasks |
-| GET | `/api/tasks/:id` | Get task by ID |
+| GET | `/api/tasks` | Get all tasks for the logged-in user |
+| GET | `/api/tasks/:id` | Get a single task by ID |
 | POST | `/api/tasks` | Create a new task |
 | PATCH | `/api/tasks/:id` | Update a task |
 | DELETE | `/api/tasks/:id` | Delete a task |
-| POST | `/api/tasks/schedule` | Run the scheduling engine |
+| POST | `/api/tasks/schedule` | Fetch the user's tasks + blocked intervals from the DB, run the scheduling engine, persist and return the result |
+
+### Blocked Intervals — all routes below require authentication
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/api/blocked-intervals` | Get all blocked intervals for the logged-in user |
+| GET | `/api/blocked-intervals/:id` | Get a single blocked interval by ID |
+| POST | `/api/blocked-intervals` | Create a new blocked interval |
+| PATCH | `/api/blocked-intervals/:id` | Update a blocked interval |
+| DELETE | `/api/blocked-intervals/:id` | Delete a blocked interval |
 
 ### Schedule Request Body
 
 ```json
 {
-  "tasks": [],
-  "blockedIntervals": [],
-  "fromTime": "2026-06-10T08:00:00"
+  "fromTime": "2026-07-08T09:00:00"
 }
 ```
+
+Tasks and blocked intervals are no longer sent by the client — `/schedule` reads them directly from Postgres, scoped to the authenticated user.
 
 ### Schedule Response
 
@@ -165,6 +209,8 @@ DayForge/
 }
 ```
 
+Each task in the response includes its assigned `scheduledSlots`, updated `task_status`, and `progress` — the same values written back to the database.
+
 ---
 
 ## Task Input Schema
@@ -173,48 +219,33 @@ DayForge/
 {
   "name": "OS Exam Prep",
   "durationMinutes": 600,
-  "deadline": "2026-06-12T09:00",
+  "deadline": "2026-07-12T09:00",
   "priority": 5,
   "splittable": true,
   "minSplitDuration": 60,
-  "earliestStart": "2026-06-07",
+  "earliestStart": "2026-07-08",
   "dependencies": ["task-uuid"],
   "category": "exam"
 }
 ```
 
+## Blocked Interval Input Schema
+
+```json
+{
+  "label": "College hours",
+  "start": "2026-07-08T09:00:00",
+  "end": "2026-07-08T16:00:00",
+  "recurrence": "none",
+  "type": "blocked"
+}
+```
+
 ---
 
-## Sample Output (Standalone Engine)
+## Database Schema
 
-```
-╔══════════════════════════════════════╗
-║         DAYFORGE SCHEDULER           ║
-╚══════════════════════════════════════╝
-
-  [1/5] Validating tasks...
-  [2/5] Building runtime objects...
-  [3/5] Resolving task dependencies...
-  [4/5] Generating free time slots...
-  [5/5] Running scheduling algorithm...
-
-✅ SCHEDULED TASKS (8)
-
-  📌 OS Exam Prep
-     Priority: 5 | Progress: 100%
-     Sessions: 4 (split across multiple slots)
-     [1] Mon 09:00 → 15:00  Reason: Earliest deadline
-     [2] Tue 07:00 → 09:00  Reason: Earliest deadline
-
-📊 Summary
-   Tasks submitted: 9 | Scheduled: 8 | At risk: 1
-   Scheduling rate: 89%
-
-🕐 Workload
-   Work today: 7.9h | This week: 34.5h | Free today: 2.2h
-
-💚 Health: Avg urgency 0.15/1.0 — Schedule looks healthy 🟢
-```
+PostgreSQL, three tables: `users`, `tasks`, `blocked_intervals`. Both `tasks` and `blocked_intervals` scope every row to a `user_id` foreign key with `ON DELETE CASCADE`. `tasks.scheduled_slots` is `JSONB`, overwritten on every `/schedule` call. `tasks.dependencies` is a native `UUID[]` array. Full schema in `dayforge-backend/db/schema.sql`.
 
 ---
 
@@ -235,40 +266,33 @@ DayForge/
 
 ## Test Coverage
 
-62 unit tests across 5 files using Node's built-in `node:test` — no external framework required.
+74 tests across 7 files using Node's built-in `node:test` — no external framework required.
 
-Every module in the scheduling engine has dedicated tests written alongside the implementation. Coverage includes: normal scheduling cases, empty inputs, past deadlines, impossible tasks, dependency chains, cycles, slots that fit work but not work + break, splittable tasks smaller than `minSplitDuration`, and tasks with future `earliestStart`.
+- **Engine tests** (65 tests): scheduling algorithm, dependency resolution, free-slot building, validators — pure logic, no DB dependency. Covers normal scheduling, empty inputs, past deadlines, impossible tasks, dependency chains, cycles, slots that fit work but not work + break, splittable tasks smaller than `minSplitDuration`, and future `earliestStart`.
+- **Repository tests** (9 tests): real integration tests against local Postgres — verifies CRUD, user-scoping (one user can't read another's rows), and partial updates actually work against the live schema, not a mock.
 
 ---
 
 ## Running the Project
 
-### Standalone Engine
+### Backend API Server
 
 ```bash
 git clone https://github.com/24cse-deepika/DayForge.git
-cd DayForge
+cd DayForge/dayforge-backend
 npm install
+# Set up .env — see .env.example for required variables:
+# DATABASE_URL, JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, BASE_URL, CLIENT_ORIGIN
+psql -U postgres -d dayforge -f db/schema.sql
 node index.js
+# Server starts on port 3000
 ```
 
 ### Run All Tests
 
 ```bash
-node --test dayforge-backend/tests/validator_test.js \
-             dayforge-backend/tests/dependencyResolverTest.js \
-             dayforge-backend/tests/freeSlotBuilderTest.js \
-             dayforge-backend/tests/schedulingAlgoTest.js \
-             dayforge-backend/tests/runSchedulerTest.js
-```
-
-### Backend API Server
-
-```bash
 cd dayforge-backend
-npm install
-node index.js
-# Server starts on port 3000
+npm test
 ```
 
 ---
@@ -276,10 +300,10 @@ node index.js
 ## Roadmap
 
 - [x] Scheduling engine (greedy hybrid, dependency resolution, hard/soft slots)
-- [x] Express REST API (auth + task routes, input validation, error handling)
-- [x] 62 unit tests, all passing
-- [ ] PostgreSQL — task persistence, completion tracking, reschedule history
-- [ ] JWT auth — bcrypt password hashing, token-based sessions
-- [ ] Full CRUD connected to database (currently stubbed)
-- [ ] HTML, CSS, EJS frontend 
-- [ ] DB-dependent metrics — completion rate, on-time delivery rate
+- [x] Express REST API (task + blocked-interval routes, input validation, error handling)
+- [x] PostgreSQL persistence — tasks, blocked intervals, generated schedules
+- [x] Full auth — bcrypt password hashing, JWT sessions, Google OAuth
+- [x] Full CRUD connected to database, scoped per user
+- [x] 74 tests, all passing (engine + repository integration tests)
+- [ ] HTML, CSS, EJS frontend
+- [ ] Deployment (Railway/Render + Neon/Railway Postgres)
