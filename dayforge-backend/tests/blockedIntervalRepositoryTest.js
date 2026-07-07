@@ -13,7 +13,7 @@ let testUserId;
 
 before(async () => {
   const email = `blocked-interval-repo-test-${Date.now()}@example.com`;
-  const user = await userRepository.createUser({ email, passwordHash: 'placeholder' });
+  const user = await userRepository.createLocalUser({ email, passwordHash: 'placeholder' });
   testUserId = user.id;
 });
 

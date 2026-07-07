@@ -19,7 +19,7 @@ before(async () => {
   // A throwaway user scoped to this test run, so these tests don't depend
   // on any particular row already existing in your dev database.
   const email = `task-repo-test-${Date.now()}@example.com`;
-  const user = await userRepository.createUser({ email, passwordHash: 'placeholder' });
+  const user = await userRepository.createLocalUser({ email, passwordHash: 'placeholder' });
   testUserId = user.id;
 });
 
