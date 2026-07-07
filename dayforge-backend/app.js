@@ -4,9 +4,13 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const pool = require('./db/pool');
 require('./config/passport'); // registers the Google strategy (side-effect import)
+const path = require('path');
 
 const app = express();
 
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(helmet());
 
 // credentials: true is required so the browser will send/receive the
@@ -28,11 +32,13 @@ app.use(passport.initialize()); // no passport.session() — we use our own JWT,
 const authRoutes = require('./routes/auth');
 const taskRoutes = require('./routes/tasks');
 const blockedIntervalRoutes = require('./routes/blockedIntervals');
+const pageRoutes = require('./routes/pages');
 
 // Use routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/blocked-intervals', blockedIntervalRoutes);
+app.use('/', pageRoutes);
 
 // Quick way to confirm the running server can actually reach Postgres,
 // separate from db/testConnection.js (which checks before the server starts).
