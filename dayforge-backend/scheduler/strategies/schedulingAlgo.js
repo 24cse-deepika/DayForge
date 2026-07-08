@@ -1,21 +1,25 @@
-const { PRIORITY, TASK_STATUSES, SCHEDULE_REASONS, ERROR_CODES, CRITICAL_THRESHOLD_HOURS, URGENCY_THRESHOLD_PERCENT } = require('../../utils/constants');
+const { PRIORITY, TASK_STATUSES, SCHEDULE_REASONS, ERROR_CODES, CRITICAL_THRESHOLD_HOURS, URGENCY_THRESHOLD_PERCENT, BREAK_RULES } = require('../../utils/constants');
 const { percentageTimeRemaining, addMinutes, minutesToMilliseconds, minutesBetween, getBreakDuration } = require('../../utils/timeUtils');
 
 function scoreTask(task, currentTime) {
-    let urgency = 1 - (percentageTimeRemaining(task.earliestStart, task.deadline, currentTime) / 100);
+    const earliestStart = task.earliestStart || currentTime;
+    let urgency = 1 - (percentageTimeRemaining(earliestStart, task.deadline, currentTime) / 100);
     let normalizedPriority = (task.priority - PRIORITY.MIN) / (PRIORITY.MAX - PRIORITY.MIN);
     return (urgency * 0.7) + (normalizedPriority * 0.3);
 }
 
 function findSlot(task, fromTime, slotsToUse) {
+    const earliestStart = task.earliestStart || fromTime;
     for (let slot of slotsToUse) {
-        const effectiveStart = new Date(Math.max(slot.start.getTime(), fromTime.getTime(), task.earliestStart.getTime()));
+        const effectiveStart = new Date(Math.max(slot.start.getTime(), fromTime.getTime(), earliestStart.getTime()));
         const availableMinutes = minutesBetween(effectiveStart, slot.end);
 
         if (task.splittable) {
-            // First find how much work fits raw (no break yet)
-            const maxFit = Math.min(task.duration, availableMinutes);
-            const isLastChunk = task.duration <= task.minSplitDuration;
+            // A single sitting is capped at MEDIUM_BREAK_MAX minutes of continuous
+            // work — beyond that, the task must be split into another session with
+            // a real break in between, rather than one long uninterrupted block.
+            const maxFit = Math.min(task.duration, availableMinutes, BREAK_RULES.MEDIUM_BREAK_MAX);
+            const isLastChunk = maxFit >= task.duration;
 
             if (maxFit <= 0) continue;
 
@@ -26,21 +30,25 @@ function findSlot(task, fromTime, slotsToUse) {
 
                 if (fittedWithBreak >= task.minSplitDuration) {
                     // Enough room for work + break
-                    const actualFit = Math.min(task.duration, fittedWithBreak);
+                    const actualFit = Math.min(maxFit, fittedWithBreak);
+                    const workEnd = new Date(effectiveStart.getTime() + minutesToMilliseconds(actualFit));
                     return {
                         success: true,
                         start: effectiveStart,
-                        end: new Date(effectiveStart.getTime() + minutesToMilliseconds(actualFit + breakDuration)),
+                        end: new Date(workEnd.getTime() + minutesToMilliseconds(breakDuration)),
+                        workEnd,
                         isPartial: actualFit < task.duration,
                         fittedDuration: actualFit,
                         breakGiven: true
                     };
                 } else {
                     // Not enough room for work + break, place work only
+                    const workEnd = new Date(effectiveStart.getTime() + minutesToMilliseconds(maxFit));
                     return {
                         success: true,
                         start: effectiveStart,
-                        end: new Date(effectiveStart.getTime() + minutesToMilliseconds(maxFit)),
+                        end: workEnd,
+                        workEnd,
                         isPartial: maxFit < task.duration,
                         fittedDuration: maxFit,
                         breakGiven: false
@@ -51,19 +59,23 @@ function findSlot(task, fromTime, slotsToUse) {
             const breakDuration = getBreakDuration(task.duration);
 
             if (availableMinutes >= task.duration + breakDuration) {
+                const workEnd = new Date(effectiveStart.getTime() + minutesToMilliseconds(task.duration));
                 return {
                     success: true,
                     start: effectiveStart,
-                    end: new Date(effectiveStart.getTime() + minutesToMilliseconds(task.duration + breakDuration)),
+                    end: new Date(workEnd.getTime() + minutesToMilliseconds(breakDuration)),
+                    workEnd,
                     isPartial: false,
                     fittedDuration: task.duration,
                     breakGiven: true
                 };
             } else if (availableMinutes >= task.duration) {
+                const workEnd = new Date(effectiveStart.getTime() + minutesToMilliseconds(task.duration));
                 return {
                     success: true,
                     start: effectiveStart,
-                    end: new Date(effectiveStart.getTime() + minutesToMilliseconds(task.duration)),
+                    end: workEnd,
+                    workEnd,
                     isPartial: false,
                     fittedDuration: task.duration,
                     breakGiven: false
@@ -78,19 +90,30 @@ function findSlot(task, fromTime, slotsToUse) {
 // place task to the slot and update everything
 function placeTask(task, slotInfo, reason) {
    task.duration -= slotInfo.fittedDuration;
-   task.task_status = task.duration === 0 ? TASK_STATUSES.COMPLETED : TASK_STATUSES.SCHEDULED;
+   const fullyAllocated = task.duration === 0;
+   // Getting a slot on the calendar isn't the same as the work being done —
+   // "completed" should mean the user actually finished it, which this
+   // engine has no way of knowing. So the persisted/user-facing status is
+   // always SCHEDULED here; `fullyAllocated` (returned below) is the
+   // separate internal signal runScheduler uses to know a task needs no
+   // further placement passes.
+   task.task_status = TASK_STATUSES.SCHEDULED;
    task.progress = Math.round(((task.originalDuration - task.duration) / task.originalDuration) * 100);
    task.updated_at = new Date(slotInfo.end);
     task.scheduledSlots.push({
         taskId: task.id,
         taskName: task.name,
         start: slotInfo.start,
-        end: slotInfo.end,
+        // Render only the work portion — slotInfo.end (used above for occupiedSlots)
+        // still reserves the full work+break span so nothing else can be scheduled
+        // during the break; workEnd falls back to end for any legacy caller that
+        // doesn't supply it.
+        end: slotInfo.workEnd || slotInfo.end,
         isPartial: slotInfo.isPartial,
         reason: reason
     });
    
-    return { success: true, updatedTask: task };
+    return { success: true, updatedTask: task, fullyAllocated };
 }
 
 function canFit(task, fromTime, slots) {
@@ -206,10 +229,10 @@ function runScheduler(tasks, readyQueue, adj, hardSlots, softSlots, fromTime) {
         occupiedSlots.push({ start: slotInfo.start, end: slotInfo.end });
         occupiedSlots.sort((a, b) => a.start - b.start);
 
-        placeTask(taskToSchedule, slotInfo, SCHEDULE_REASONS.EARLIEST_DEADLINE);
+        const placement = placeTask(taskToSchedule, slotInfo, SCHEDULE_REASONS.EARLIEST_DEADLINE);
         lastQueueSize = -1;
 
-        if (taskToSchedule.task_status === TASK_STATUSES.COMPLETED) {
+        if (placement.fullyAllocated) {
             scheduledTasks.push(taskToSchedule);
             updateReadyQueue(taskToSchedule.id, tasks, adj, completedTaskIds, readyQueue);
         } else {
