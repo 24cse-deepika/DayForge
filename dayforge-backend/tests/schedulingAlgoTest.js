@@ -107,12 +107,13 @@ test('placeTask: progress calculated correctly', () => {
     assert.equal(task.progress, 50);
 });
 
-test('placeTask: status is COMPLETED when duration hits 0', () => {
+test('placeTask: status stays SCHEDULED (not COMPLETED) when duration hits 0 — completion is user-driven, not engine-driven', () => {
     const task = makeTask({ duration: 60, deadline: '2026-06-10T00:00:00' });
     const slotInfo = { fittedDuration: 60, isPartial: false, start: new Date(NOW), end: new Date(NOW.getTime() + 75 * 60000), breakGiven: true };
-    placeTask(task, slotInfo, 'test');
-    assert.equal(task.task_status, TASK_STATUSES.COMPLETED);
+    const result = placeTask(task, slotInfo, 'test');
+    assert.equal(task.task_status, TASK_STATUSES.SCHEDULED);
     assert.equal(task.progress, 100);
+    assert.equal(result.fullyAllocated, true);
 });
 
 test('placeTask: status is SCHEDULED when work remains', () => {

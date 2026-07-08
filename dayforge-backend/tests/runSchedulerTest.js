@@ -23,7 +23,7 @@ test('runScheduler: single task completes successfully', () => {
     assert.equal(success, true);
     assert.equal(scheduledTasks.length, 1);
     assert.equal(atRiskTasks.length, 0);
-    assert.equal(scheduledTasks[0].task_status, TASK_STATUSES.COMPLETED);
+    assert.equal(scheduledTasks[0].task_status, TASK_STATUSES.SCHEDULED);
     assert.equal(scheduledTasks[0].progress, 100);
 });
 
@@ -111,7 +111,7 @@ test('runScheduler: splittable task completes across multiple slots', () => {
     const { scheduledTasks, atRiskTasks } = runScheduler([task], [task], {}, hardSlots, hardSlots, FROM);
     assert.equal(atRiskTasks.length, 0);
     assert.equal(scheduledTasks.length, 1);
-    assert.equal(scheduledTasks[0].task_status, TASK_STATUSES.COMPLETED);
+    assert.equal(scheduledTasks[0].task_status, TASK_STATUSES.SCHEDULED);
     assert.ok(scheduledTasks[0].scheduledSlots.length > 1, 'Should span multiple slots');
 });
 
@@ -124,5 +124,5 @@ test('runScheduler: uses softSlots when hardSlots insufficient', () => {
     const { scheduledTasks, atRiskTasks } = runScheduler([task], [task], {}, tinyHard, softSlots, FROM);
     assert.equal(atRiskTasks.length, 0);
     assert.equal(scheduledTasks.length, 1);
-    assert.equal(scheduledTasks[0].task_status, TASK_STATUSES.COMPLETED);
+    assert.equal(scheduledTasks[0].task_status, TASK_STATUSES.SCHEDULED);
 });

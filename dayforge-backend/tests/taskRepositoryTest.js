@@ -7,9 +7,9 @@ const pool = require('../db/pool');
 const taskRepository = require('../repositories/taskRepository');
 const userRepository = require('../repositories/userRepository');
 
-// These are integration tests - they hit your real local Postgres, not a
+// These are integration tests - they hit the real local Postgres, not a
 // mock. That's deliberate: the thing worth verifying here is "does this SQL
-// actually do what I think against a real table," which a mock can't tell you.
+// actually do what I think against a real table," which a mock can't tell.
 // Run with: node --test tests/taskRepositoryTest.js
 // (or `node --test tests/` to run everything in the folder)
 
@@ -43,8 +43,8 @@ test('createTaskRecord inserts a task and applies DB defaults', async () => {
   assert.equal(task.name, 'Write integration tests');
   assert.equal(task.duration, 45);
   assert.equal(task.originalDuration, 45);
-  assert.equal(task.taskStatus, 'PENDING');
-  assert.equal(task.urgency, 'NORMAL');
+  assert.equal(task.taskStatus, 'pending');
+  assert.equal(task.urgency, 'normal');
   assert.equal(task.progress, 0);
   assert.equal(task.splittable, false);
   assert.ok(task.id, 'expected a generated uuid');
