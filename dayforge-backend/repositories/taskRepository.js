@@ -1,6 +1,7 @@
 // Controllers are the glue: they read/write here, then hand plain objects to the engine.
  
 const pool = require('../db/pool');
+const { TASK_STATUSES, URGENCY } = require('../utils/constants');
  
 // DB columns are lowercase-folded (see db/schema.sql for why). We translate
 // to/from camelCase here so the rest of the app never has to think about it.
@@ -24,7 +25,9 @@ function mapRowToTask(row) {
     earliestStart: row.earliest_start,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    scheduledSlots: row.scheduledslots,
+    scheduledSlots: typeof row.scheduledslots === 'string'
+      ? JSON.parse(row.scheduledslots)
+      : (row.scheduledslots || []),
   };
 }
  
@@ -59,8 +62,8 @@ async function createTaskRecord(input) {
       input.durationMinutes,
       input.deadline,
       input.priority ?? null,
-      input.taskStatus || 'PENDING',
-      input.urgency || 'NORMAL',
+      input.taskStatus || TASK_STATUSES.PENDING,
+      input.urgency || URGENCY.NORMAL,
       input.splittable ?? false,
       input.minSplitDuration ?? 25,
       input.category ?? null,
