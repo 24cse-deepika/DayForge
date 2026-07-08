@@ -24,9 +24,15 @@ async function scheduleTask(req, res, next) {
     const tasks = await taskRepository.getAllTasksForUser(userId);
     const blockedIntervals = await blockedIntervalRepository.getAllBlockedIntervalsForUser(userId);
 
+    // A task with no earliestStart means "no constraint — can start any time
+    // from now." The engine (findSlot/scoreTask) assumes earliestStart is
+    // always a real Date, so we normalize the missing case here, at the
+    // single seam between user input and the scheduler, rather than inside
+    // the engine itself.
     const taskObjects = tasks.map(t => ({
       ...t,
       task_status: t.taskStatus,
+      earliestStart: t.earliestStart || fromTime,
     }));
     const blockedIntervalObjects = blockedIntervals;
 
