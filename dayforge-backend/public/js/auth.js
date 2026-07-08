@@ -47,3 +47,41 @@ function setupAuthForm({ formId, endpoint, onSuccess }) {
     }
   });
 }
+
+// Wiring lives here (not in inline <script> tags in the .ejs files) because
+// helmet's default Content-Security-Policy is `script-src 'self'` — it has
+// no 'unsafe-inline', so any inline <script> block is silently dropped by
+// the browser. External same-origin files like this one are unaffected.
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('loginForm')) {
+    setupAuthForm({
+      formId: 'loginForm',
+      endpoint: '/api/auth/login',
+      onSuccess: () => { window.location.href = '/dashboard'; },
+    });
+  }
+
+  const registerForm = document.getElementById('registerForm');
+  if (registerForm) {
+    // Runs before setupAuthForm's own submit listener (registered next,
+    // so it runs second) so a mismatch can stop the fetch from firing.
+    registerForm.addEventListener('submit', (e) => {
+      const password = document.getElementById('password').value;
+      const confirm = document.getElementById('confirmPassword').value;
+      const errorBanner = document.getElementById('errorBanner');
+
+      if (password !== confirm) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        errorBanner.textContent = 'Passwords do not match.';
+        errorBanner.style.display = 'block';
+      }
+    });
+
+    setupAuthForm({
+      formId: 'registerForm',
+      endpoint: '/api/auth/register',
+      onSuccess: () => { window.location.href = '/dashboard'; },
+    });
+  }
+});

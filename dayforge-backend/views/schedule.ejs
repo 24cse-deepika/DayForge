@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('partials/head', { title: 'Schedule' }) %>
+</head>
+<body>
+  <div class="app-shell">
+    <%- include('partials/sidebar', { active: 'schedule' }) %>
+
+    <main class="main-content">
+      <div class="page-header">
+        <h1>Your Schedule</h1>
+      </div>
+
+      <div id="scheduleError" class="error-banner" style="display:none;"></div>
+
+      <div class="schedule-toolbar">
+        <div class="field" style="margin-bottom:0;">
+          <label for="fromTime">Schedule from</label>
+          <input type="datetime-local" id="fromTime">
+        </div>
+        <button id="generateBtn" class="btn btn-primary">Generate Schedule</button>
+      </div>
+
+      <div class="day-tabs" id="dayTabs"></div>
+
+      <div class="timeline-wrap">
+        <div class="timeline-hours" id="timelineHours"></div>
+        <div class="timeline-track" id="timelineTrack"></div>
+      </div>
+
+      <div class="card" style="margin-top: var(--space-3);">
+        <h2>At-Risk Tasks</h2>
+        <div id="atRiskList" class="at-risk-list">
+          <div class="empty-state">
+            <div class="display">Nothing at risk yet</div>
+            <p>Generate a schedule to see tasks that couldn't be fit in.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/schedule.js"></script>
+</body>
+</html>

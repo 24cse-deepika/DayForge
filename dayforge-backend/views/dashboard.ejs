@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('partials/head', { title: 'Dashboard' }) %>
+</head>
+<body>
+  <div class="app-shell">
+    <%- include('partials/sidebar', { active: 'dashboard' }) %>
+
+    <main class="main-content">
+      <div class="page-header">
+        <h1>Dashboard</h1>
+        <a href="/schedule" class="btn btn-primary">Generate Schedule &rarr;</a>
+      </div>
+
+      <div class="card">
+        <h2>Add a Task</h2>
+        <div class="error-banner" id="taskError" style="display:none;"></div>
+
+        <form id="taskForm">
+          <div class="field">
+            <label for="taskName">Task name</label>
+            <input type="text" id="taskName" name="name" placeholder="e.g. OS Exam Prep" required>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="taskDuration">Duration (minutes)</label>
+              <input type="number" id="taskDuration" name="durationMinutes" min="5" step="5" placeholder="120" required>
+            </div>
+            <div class="field">
+              <label for="taskPriority">Priority</label>
+              <select id="taskPriority" name="priority" required>
+                <option value="5">5 — Critical</option>
+                <option value="4">4 — High</option>
+                <option value="3" selected>3 — Medium</option>
+                <option value="2">2 — Low</option>
+                <option value="1">1 — Minimal</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="taskDeadline">Deadline</label>
+              <input type="datetime-local" id="taskDeadline" name="deadline" required>
+            </div>
+            <div class="field">
+              <label for="taskEarliestStart">Earliest start (optional)</label>
+              <input type="datetime-local" id="taskEarliestStart" name="earliestStart">
+            </div>
+          </div>
+
+          <div class="field-check">
+            <input type="checkbox" id="taskSplittable" name="splittable">
+            <label for="taskSplittable">This task can be split across multiple sessions</label>
+          </div>
+
+          <div class="field conditional-field" id="minSplitField">
+            <label for="taskMinSplit">Minimum session length (minutes)</label>
+            <input type="number" id="taskMinSplit" name="minSplitDuration" min="5" step="5" value="25">
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="taskCategory">Category (optional)</label>
+              <input type="text" id="taskCategory" name="category" placeholder="e.g. exam, work, personal">
+            </div>
+            <div class="field">
+              <label for="taskDependencies">Depends on (optional)</label>
+              <select id="taskDependencies" name="dependencies" multiple></select>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary">Add Task</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Your Tasks</h2>
+        <div id="taskList">
+          <div class="empty-state">
+            <div class="display">No tasks yet</div>
+            <p>Add your first task above to get started.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Add Blocked Time</h2>
+        <div class="error-banner" id="blockError" style="display:none;"></div>
+
+        <form id="blockForm">
+          <div class="field">
+            <label for="blockLabel">Label</label>
+            <input type="text" id="blockLabel" name="label" placeholder="e.g. Sleep, Classes, Gym" required>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="blockStart">Start</label>
+              <input type="datetime-local" id="blockStart" name="start" required>
+            </div>
+            <div class="field">
+              <label for="blockEnd">End</label>
+              <input type="datetime-local" id="blockEnd" name="end" required>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="blockRecurrence">Repeats</label>
+              <select id="blockRecurrence" name="recurrence">
+                <option value="none">Doesn't repeat</option>
+                <option value="daily">Every day</option>
+                <option value="weekdays">Weekdays</option>
+                <option value="weekends">Weekends</option>
+                <option value="custom">Custom days</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="blockType">Type</label>
+              <select id="blockType" name="type">
+                <option value="blocked">Blocked (non-negotiable)</option>
+                <option value="break">Break (flexible)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field conditional-field" id="customDaysField">
+            <label>Custom days</label>
+            <div class="day-checks">
+              <label><input type="checkbox" name="customDays" value="Monday"> Mon</label>
+              <label><input type="checkbox" name="customDays" value="Tuesday"> Tue</label>
+              <label><input type="checkbox" name="customDays" value="Wednesday"> Wed</label>
+              <label><input type="checkbox" name="customDays" value="Thursday"> Thu</label>
+              <label><input type="checkbox" name="customDays" value="Friday"> Fri</label>
+              <label><input type="checkbox" name="customDays" value="Saturday"> Sat</label>
+              <label><input type="checkbox" name="customDays" value="Sunday"> Sun</label>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary">Add Blocked Time</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Your Blocked Time</h2>
+        <div id="blockList">
+          <div class="empty-state">
+            <div class="display">No blocked time yet</div>
+            <p>Add sleep, classes, or other fixed commitments above.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/dashboard.js"></script>
+</body>
+</html>

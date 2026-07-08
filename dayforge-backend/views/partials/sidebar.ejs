@@ -1,0 +1,17 @@
+<div class="sidebar">
+  <div class="auth-brand">
+    <div class="mark">DF</div>
+    <span>DayForge</span>
+  </div>
+
+  <nav>
+    <a href="/dashboard" class="<%= active === 'dashboard' ? 'active' : '' %>">Dashboard</a>
+    <a href="/schedule" class="<%= active === 'schedule' ? 'active' : '' %>">Schedule</a>
+  </nav>
+
+  <div class="logout">
+    <form id="logoutForm">
+      <button type="submit">Log out</button>
+    </form>
+  </div>
+</div>

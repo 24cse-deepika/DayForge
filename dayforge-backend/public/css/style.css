@@ -445,6 +445,73 @@ select:focus-visible {
 
 .at-risk-list .list-item .item-name { color: var(--ember-dim); }
 
+/* ============================================================
+   Conditional / dependent form fields (splittable, custom days)
+   ============================================================ */
+
+.conditional-field {
+  display: none;
+}
+.conditional-field.is-visible {
+  display: block;
+}
+
+.day-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.day-checks label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+.day-checks input { width: auto; }
+
+/* ============================================================
+   Day tabs (schedule page — week-at-a-glance switcher)
+   ============================================================ */
+
+.day-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.day-tab {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.day-tab:hover { border-color: var(--ink-soft); }
+.day-tab.active {
+  background: var(--charcoal);
+  border-color: var(--charcoal);
+  color: #fff;
+}
+.day-tab .tab-count {
+  margin-left: 0.35rem;
+  opacity: 0.75;
+  font-weight: 500;
+}
+
+/* Small helper text under form controls */
+.field-hint {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  margin-top: 0.3rem;
+}
+
 @media (max-width: 720px) {
   .app-shell { flex-direction: column; }
   .sidebar { width: 100%; flex-direction: row; align-items: center; padding: var(--space-2); }

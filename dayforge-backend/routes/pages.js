@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { verifyToken } = require('../utils/jwt');
+const { authenticatePage } = require('../middleware/authMiddleware');
 
 // If someone's already logged in and hits /login or /register, send them
 // straight to the dashboard instead of showing the form again.
@@ -26,6 +27,14 @@ router.get('/login', redirectIfAuthenticated, (req, res) => {
 
 router.get('/register', redirectIfAuthenticated, (req, res) => {
   res.render('register');
+});
+
+router.get('/dashboard', authenticatePage, (req, res) => {
+  res.render('dashboard');
+});
+
+router.get('/schedule', authenticatePage, (req, res) => {
+  res.render('schedule');
 });
 
 module.exports = router;
