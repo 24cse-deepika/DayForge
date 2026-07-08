@@ -2,9 +2,9 @@
 
 An intelligent task scheduling engine that builds your weekly plan automatically — respecting deadlines, priorities, dependencies, and your personal time blocks.
 
-**Stack:** Node.js · Express.js · PostgreSQL (raw `pg`) · JWT · bcrypt · Passport (Google OAuth) · helmet · cors · express-validator · node:test
+**Stack:** Node.js · Express.js · PostgreSQL (raw `pg`) · EJS · JWT · bcrypt · Passport (Google OAuth) · helmet · cors · express-validator · node:test
 **Tests:** 74 tests across 7 files, all passing
-**Status:** Engine complete · Auth complete (local + Google OAuth) · PostgreSQL persistence complete · Frontend in progress
+**Status:** v1.0.0 — Engine complete · Auth complete (local + Google OAuth) · PostgreSQL persistence complete · Frontend complete
 
 ---
 
@@ -18,6 +18,7 @@ You give DayForge your tasks (deadlines, priorities, durations, dependencies) an
 - If hard free time is insufficient, soft-blocked time (breaks, naps) is used as fallback
 - Tasks that genuinely cannot fit before their deadline are flagged with a reason — never silently skipped
 - Every user's tasks, blocked intervals, and generated schedules persist across sessions
+- The dashboard and schedule timeline are server-rendered (EJS) and reload with your last-generated schedule intact
 
 ---
 
@@ -38,7 +39,9 @@ Greedy over DP/backtracking: optimal scheduling is O(n!) or O(2ⁿ). For realist
 
 ### Slot Selection: Best-Fit with Occupied Slot Subtraction
 
-`findSlot` uses best-fit — for splittable tasks, it fills as much of the available window as possible (`min(taskDuration, availableMinutes - breakDuration)`), reducing fragmentation by maximising work done per session.
+`findSlot` uses best-fit — for splittable tasks, it fills as much of the available window as possible, capped so a single sitting never exceeds `BREAK_RULES.MEDIUM_BREAK_MAX` (180 minutes) of continuous work. Longer tasks are therefore forced across multiple sessions with a real break in between, rather than one uninterrupted block with a single break tacked on the end.
+
+Each placed slot tracks a `workEnd` (the actual work portion, used for what's rendered on the timeline) separately from the reserved end (work + break, used to block other tasks from being scheduled during that break).
 
 `runScheduler` maintains an `occupiedSlots` array. Before each scheduling decision, placed slots are subtracted from the free slot pool — ensuring no two tasks compete for the same window.
 
@@ -70,9 +73,18 @@ Low-priority tasks with far deadlines could theoretically never get scheduled if
 | ≤ 20 min | None |
 | 21 – 40 min | 5 min |
 | 41 – 180 min | 15 min |
-| > 180 min | 30 min |
+| > 180 min | 30 min, and the session is capped at 180 min — the rest becomes a separate session |
 
 If a slot fits the task but not task + break, the task is placed without a break rather than skipped. Correctness over perfection.
+
+### Task Status Vocabulary
+
+`task_status` reflects the scheduling engine's state, not the user's actual
+progress — placing a task on the calendar (even fully) sets it to
+`scheduled`, never `completed`. The engine has no way to know a task was
+actually finished, so `completed` is reserved for the user explicitly
+marking it done. An internal `fullyAllocated` flag (not exposed as
+`task_status`) drives the scheduling loop and dependency-chain unlocking.
 
 ---
 
@@ -80,7 +92,7 @@ If a slot fits the task but not task + break, the task is placed without a break
 
 - **Local auth**: email/password, bcrypt-hashed (10 salt rounds)
 - **Google OAuth**: via Passport, no server-side sessions — the OAuth handshake issues a signed JWT, same as local login
-- **Sessions**: JWT stored in an httpOnly cookie (7-day expiry), verified on every protected request by `authenticate` middleware
+- **Sessions**: JWT stored in an httpOnly cookie (7-day expiry), verified on every protected request by `authenticate` middleware; page routes use `authenticatePage` to redirect unauthenticated visitors to `/login` instead of returning a JSON 401
 - Every task and blocked interval is scoped to the authenticated user (`user_id` foreign key, enforced at the query level — one user can never read or modify another's data)
 
 ---
@@ -91,7 +103,7 @@ If a slot fits the task but not task + break, the task is placed without a break
 DayForge/
 ├── package.json
 │
-└── dayforge-backend/                 # Express REST API
+└── dayforge-backend/                 # Express app — REST API + server-rendered frontend
     ├── app.js                        # Express setup — middleware, routes, error handling
     ├── index.js                      # Server entry point
     │
@@ -106,7 +118,8 @@ DayForge/
     ├── routes/
     │   ├── auth.js                    # /register, /login, /logout, /google, /google/callback, /me
     │   ├── tasks.js                   # Task CRUD + /schedule, all behind auth middleware
-    │   └── blockedIntervals.js        # Blocked interval CRUD, behind auth middleware
+    │   ├── blockedIntervals.js        # Blocked interval CRUD, behind auth middleware
+    │   └── pages.js                   # Server-rendered pages — /, /login, /register, /dashboard, /schedule
     │
     ├── controllers/
     │   ├── authController.js          # Auth handlers — register, login, Google callback, logout
@@ -143,12 +156,26 @@ DayForge/
     │   ├── idGenerator.js
     │   └── jwt.js                     # generateToken / verifyToken
     │
+    ├── views/                         # EJS templates
+    │   ├── partials/head.ejs, sidebar.ejs
+    │   ├── login.ejs, register.ejs
+    │   ├── dashboard.ejs
+    │   └── schedule.ejs                # Timeline, day tabs, generate-schedule flow, at-risk list
+    │
+    ├── public/                        # Static assets served by Express
+    │   ├── css/style.css
+    │   └── js/
+    │       ├── auth.js
+    │       ├── common.js
+    │       ├── dashboard.js
+    │       └── schedule.js             # Timeline rendering, generate/reload flow
+    │
     └── tests/
-        ├── validator_test.js           # 13 tests
+        ├── validator_test.js           # 12 tests
         ├── dependencyResolverTest.js    # 8 tests
-        ├── freeSlotBuilderTest.js       # 11 tests
+        ├── freeSlotBuilderTest.js       # 10 tests
         ├── schedulingAlgoTest.js        # 22 tests
-        ├── runSchedulerTest.js          # 11 tests
+        ├── runSchedulerTest.js          # 10 tests
         ├── taskRepositoryTest.js        # 6 tests — real Postgres integration tests
         └── blockedIntervalRepositoryTest.js  # 6 tests — real Postgres integration tests
                                           # 74 total, all passing
@@ -190,6 +217,16 @@ DayForge/
 | PATCH | `/api/blocked-intervals/:id` | Update a blocked interval |
 | DELETE | `/api/blocked-intervals/:id` | Delete a blocked interval |
 
+### Pages (server-rendered, EJS)
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/` | Redirects to `/login` |
+| GET | `/login` | Login page (redirects to `/dashboard` if already authenticated) |
+| GET | `/register` | Registration page (same redirect behaviour) |
+| GET | `/dashboard` | Dashboard *(protected — redirects to `/login` if not authenticated)* |
+| GET | `/schedule` | Schedule timeline — reloads your last-generated schedule from the DB *(protected)* |
+
 ### Schedule Request Body
 
 ```json
@@ -209,7 +246,7 @@ Tasks and blocked intervals are no longer sent by the client — `/schedule` rea
 }
 ```
 
-Each task in the response includes its assigned `scheduledSlots`, updated `task_status`, and `progress` — the same values written back to the database.
+Each task in the response includes its assigned `scheduledSlots`, updated `task_status` (`scheduled`, never auto-set to `completed`), and `progress` — the same values written back to the database.
 
 ---
 
@@ -229,6 +266,10 @@ Each task in the response includes its assigned `scheduledSlots`, updated `task_
 }
 ```
 
+`earliestStart` is optional — tasks without one default to the schedule's
+`fromTime` at intake, rather than the engine treating a missing value as
+"no constraint."
+
 ## Blocked Interval Input Schema
 
 ```json
@@ -245,7 +286,12 @@ Each task in the response includes its assigned `scheduledSlots`, updated `task_
 
 ## Database Schema
 
-PostgreSQL, three tables: `users`, `tasks`, `blocked_intervals`. Both `tasks` and `blocked_intervals` scope every row to a `user_id` foreign key with `ON DELETE CASCADE`. `tasks.scheduled_slots` is `JSONB`, overwritten on every `/schedule` call. `tasks.dependencies` is a native `UUID[]` array. Full schema in `dayforge-backend/db/schema.sql`.
+PostgreSQL, three tables: `users`, `tasks`, `blocked_intervals`. Both `tasks` and `blocked_intervals` scope every row to a `user_id` foreign key with `ON DELETE CASCADE`. `tasks.scheduled_slots` is `JSONB`, overwritten on every `/schedule` call. `tasks.dependencies` is a native `UUID[]` array. `task_status` and `urgency` default to lowercase (`pending`, `normal`) to match the `TASK_STATUSES`/`URGENCY` enums in `utils/constants.js`. Full schema in `dayforge-backend/db/schema.sql`.
+
+> Column names in `schema.sql` are intentionally unquoted, which Postgres
+> folds to lowercase (e.g. `minSplitDuration` → `minsplitduration`). The
+> repository layer is written against those folded names — don't quote the
+> identifiers when editing the schema.
 
 ---
 
@@ -268,24 +314,59 @@ PostgreSQL, three tables: `users`, `tasks`, `blocked_intervals`. Both `tasks` an
 
 74 tests across 7 files using Node's built-in `node:test` — no external framework required.
 
-- **Engine tests** (65 tests): scheduling algorithm, dependency resolution, free-slot building, validators — pure logic, no DB dependency. Covers normal scheduling, empty inputs, past deadlines, impossible tasks, dependency chains, cycles, slots that fit work but not work + break, splittable tasks smaller than `minSplitDuration`, and future `earliestStart`.
-- **Repository tests** (9 tests): real integration tests against local Postgres — verifies CRUD, user-scoping (one user can't read another's rows), and partial updates actually work against the live schema, not a mock.
+- **Engine tests** (62 tests): scheduling algorithm, dependency resolution, free-slot building, validators — pure logic, no DB dependency. Covers normal scheduling, empty inputs, past deadlines, impossible tasks, dependency chains, cycles, slots that fit work but not work + break, splittable tasks smaller than `minSplitDuration`, tasks with no `earliestStart`, sessions capped at 180 min with real internal breaks, and future `earliestStart`.
+- **Repository tests** (12 tests): real integration tests against local Postgres — verifies CRUD, user-scoping (one user can't read another's rows), partial updates, defensive parsing of `scheduledSlots`, and correct lowercase status/urgency defaults against the live schema, not a mock.
+
+Run just the engine tests without a live database:
+
+```bash
+node --test tests/schedulingAlgoTest.js tests/runSchedulerTest.js tests/freeSlotBuilderTest.js tests/dependencyResolverTest.js tests/validator_test.js
+```
 
 ---
 
 ## Running the Project
 
-### Backend API Server
+### Backend + Frontend (single Express app)
 
 ```bash
 git clone https://github.com/24cse-deepika/DayForge.git
 cd DayForge/dayforge-backend
 npm install
-# Set up .env — see .env.example for required variables:
-# DATABASE_URL, JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, BASE_URL, CLIENT_ORIGIN
-psql -U postgres -d dayforge -f db/schema.sql
-node index.js
-# Server starts on port 3000
+```
+
+Set up `.env`:
+
+```env
+PORT=3000
+NODE_ENV=development
+
+# Postgres connection
+DB_USER=your_pg_user
+DB_HOST=localhost
+DB_NAME=dayforge
+DB_PASSWORD=your_pg_password
+DB_PORT=5432
+
+# Auth
+JWT_SECRET=some_long_random_string
+CLIENT_ORIGIN=http://localhost:3000
+BASE_URL=http://localhost:3000
+
+# Google OAuth (optional)
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+```
+
+`BASE_URL` is used to build the Google OAuth callback URL
+(`${BASE_URL}/api/auth/google/callback`) — it must match a redirect URI
+registered in your Google Cloud console.
+
+```bash
+psql -U your_pg_user -d dayforge -f db/schema.sql
+npm start
+# Server starts on port 3000 — serves both the API and the EJS frontend.
+# Visit http://localhost:3000, you'll be redirected to /login.
 ```
 
 ### Run All Tests
@@ -305,5 +386,5 @@ npm test
 - [x] Full auth — bcrypt password hashing, JWT sessions, Google OAuth
 - [x] Full CRUD connected to database, scoped per user
 - [x] 74 tests, all passing (engine + repository integration tests)
-- [ ] HTML, CSS, EJS frontend
+- [x] HTML, CSS, EJS frontend — dashboard, schedule timeline, day tabs, at-risk list, persisted-schedule reload
 - [ ] Deployment (Railway/Render + Neon/Railway Postgres)
