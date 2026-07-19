@@ -1,6 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/authMiddleware');
+const { handleValidationErrors } = require('../middleware/validationMiddleware');
+const {
+    blockedIntervalIdParamValidator,
+    createBlockedIntervalValidators,
+    updateBlockedIntervalValidators,
+} = require('../validators/blockedIntervalValidators');
 
 const {
     getAllBlockedIntervals,
@@ -13,9 +19,9 @@ const {
 router.use(authenticate);
 
 router.get('/', getAllBlockedIntervals);
-router.get('/:id', getBlockedIntervalFromId);
-router.post('/', createNewBlockedInterval);
-router.patch('/:id', updateBlockedIntervalById);
-router.delete('/:id', deleteBlockedIntervalById);
+router.get('/:id', blockedIntervalIdParamValidator, handleValidationErrors, getBlockedIntervalFromId);
+router.post('/', createBlockedIntervalValidators, handleValidationErrors, createNewBlockedInterval);
+router.patch('/:id', updateBlockedIntervalValidators, handleValidationErrors, updateBlockedIntervalById);
+router.delete('/:id', blockedIntervalIdParamValidator, handleValidationErrors, deleteBlockedIntervalById);
 
 module.exports = router;

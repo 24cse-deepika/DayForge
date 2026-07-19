@@ -1,6 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/authMiddleware');
+const { handleValidationErrors } = require('../middleware/validationMiddleware');
+const {
+    taskIdParamValidator,
+    createTaskValidators,
+    updateTaskValidators,
+    scheduleValidators,
+} = require('../validators/taskValidators');
 
 const {
     getAllTasks,
@@ -14,11 +21,11 @@ const {
 router.use(authenticate);
 
 router.get('/', getAllTasks);
-router.post('/schedule', scheduleTask);
-router.get('/:id', getTaskFromId);
-router.post('/', createNewTask);
-router.patch('/:id', updateTaskById);
-router.delete('/:id', deleteTaskById);
+router.post('/schedule', scheduleValidators, handleValidationErrors, scheduleTask);
+router.get('/:id', taskIdParamValidator, handleValidationErrors, getTaskFromId);
+router.post('/', createTaskValidators, handleValidationErrors, createNewTask);
+router.patch('/:id', updateTaskValidators, handleValidationErrors, updateTaskById);
+router.delete('/:id', taskIdParamValidator, handleValidationErrors, deleteTaskById);
 
 module.exports = router;
 
